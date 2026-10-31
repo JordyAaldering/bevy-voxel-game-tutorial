@@ -1,5 +1,7 @@
 # Setting the scene
 
+![](img/chapter01.png)
+
 Before we can start working with voxels, we need a basic Bevy project.
 Bevy makes breaking API changes approximately every three months, so follow the [quick start](https://bevy.org/learn/quick-start) to get your project up and running.
 Make sure your Cargo configuration is set up correctly; you don't want to spend hours waiting for compilation.

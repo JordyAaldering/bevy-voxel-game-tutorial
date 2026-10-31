@@ -16,7 +16,7 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
 
 ## Steps performed
 
-1. **Split the spritesheet.** The separate images live in `assets/voxels/`, and `blocks.png` is no longer used.
+1. **Split the spritesheet.** The separate images live in `assets/voxels/`, and `spritesheet.png` is no longer used.
 2. **Add the voxel types.** `VoxelType` gets `Log` and `Leaves`, appended at the end so existing saved chunks stay valid.
    It must remain a field-less enum, as every voxel in every chunk is stored as one, and fields would blow up chunk memory.
    It also derives `Hash` and `Deserialize` (with `rename_all = "lowercase"`), so the JSON keys map directly onto the variants.

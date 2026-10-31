@@ -53,14 +53,14 @@ impl VoxelType {
 }
 
 pub struct ChunkData {
-    coord: ChunkCoord,
+    _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
     fn new(coord: ChunkCoord) -> Self {
         Self {
-            coord,
+            _coord: coord,
             voxels: [VoxelType::Air; _],
         }
     }
@@ -342,8 +342,8 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 
     let neighbor_pos = match compass {
         Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
-        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
-        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back  => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
         Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 

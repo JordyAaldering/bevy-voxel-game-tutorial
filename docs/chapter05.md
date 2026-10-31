@@ -1,5 +1,7 @@
 # Multiple chunks
 
+![](img/chapter05.png)
+
 It's time to start growing the world beyond a single chunk.
 In this chapter we'll start creating a `VoxelWorld` resource that keeps track of all chunks in the world.
 (Don't name it `World`; Bevy already uses that name.)

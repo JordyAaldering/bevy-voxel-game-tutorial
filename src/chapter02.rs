@@ -17,7 +17,7 @@ use bevy_inspector_egui::{
         prelude::*,
         input::EguiWantsInput,
     },
-    quick::WorldInspectorPlugin,
+    quick::{ResourceInspectorPlugin, WorldInspectorPlugin},
 };
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]

@@ -1,5 +1,7 @@
 # Multiple voxel types
 
+![](img/chapter06.png)
+
 Now we'll add another voxel type: dirt, how exciting.
 In the chunk generation, make only the top layer grass, and the rest dirt.
 Rather than simply giving our new voxel type another colour, now we'll start using textures for instead.
@@ -64,7 +66,7 @@ Add a case for the sides and top, and fill in the appropriate coordinates for an
 
 We should never reach this function for air, so raise a panic if that ever happens.
 
-![](../assets/blocks.png)
+![](../assets/spritesheet.png)
 
 ## Bevy's built-in TextureAtlas
 

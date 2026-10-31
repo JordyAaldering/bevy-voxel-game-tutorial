@@ -1,7 +1,3 @@
-mod aabb;
-
-pub use aabb::Aabb;
-
 use crate::{
     coords::{Axis, WorldCoord},
     Player,

@@ -14,6 +14,7 @@ use bevy::{
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
     mesh::{Indices, PrimitiveTopology},
+    pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -52,14 +53,14 @@ impl VoxelType {
 }
 
 pub struct ChunkData {
-    coord: ChunkCoord,
+    _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
     fn new(coord: ChunkCoord) -> Self {
         Self {
-            coord,
+            _coord: coord,
             voxels: [VoxelType::Air; _],
         }
     }
@@ -202,8 +203,13 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            WireframePlugin::default(),
             ScreenshotPlugin::default(),
         ))
+        .insert_resource(WireframeConfig {
+            global: true,
+            ..default()
+        })
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_systems(Startup, (

@@ -56,12 +56,12 @@ impl VoxelType {
         match self {
             Self::Grass => {
                 match direction {
-                    Direction::Top => TextureAtlasCoord { x: 3, y: 1 },
-                    Direction::Bottom => TextureAtlasCoord { x: 1, y: 0 },
-                    _ => TextureAtlasCoord { x: 2, y: 0 },
+                    Direction::Top => TextureAtlasCoord { x: 5, y: 1 },
+                    Direction::Bottom => TextureAtlasCoord { x: 7, y: 5 },
+                    _ => TextureAtlasCoord { x: 7, y: 4 },
                 }
             },
-            Self::Dirt => TextureAtlasCoord { x: 1, y: 0 },
+            Self::Dirt => TextureAtlasCoord { x: 7, y: 5 },
             _ => unreachable!(),
         }
     }
@@ -94,14 +94,14 @@ impl TextureAtlas {
 }
 
 pub struct ChunkData {
-    coord: ChunkCoord,
+    _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
     fn new(coord: ChunkCoord) -> Self {
         Self {
-            coord,
+            _coord: coord,
             voxels: [VoxelType::Air; _],
         }
     }
@@ -315,7 +315,7 @@ fn spawn_world(
     mut world: ResMut<VoxelWorld>,
     asset_server: Res<AssetServer>,
 ) {
-    let texture = asset_server.load("blocks.png");
+    let texture = asset_server.load("spritesheet.png");
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
@@ -363,7 +363,7 @@ fn generate_chunk(coord: ChunkCoord) -> ChunkData {
 }
 
 fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
-    let atlas = TextureAtlas { width: 4, height: 4 };
+    let atlas = TextureAtlas { width: 9, height: 10 };
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
@@ -398,8 +398,8 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 
     let neighbor_pos = match compass {
         Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
-        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
-        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back  => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
         Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 

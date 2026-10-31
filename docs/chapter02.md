@@ -1,5 +1,7 @@
 # Inspecting settings
 
+![](img/chapter02.png)
+
 In the previous chapter, we used constants for the camera's movement speed and mouse sensitivity.
 Want to change either value, then you have to edit the code and recompile.
 It would be much nicer to tune them while the game is running.

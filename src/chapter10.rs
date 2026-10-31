@@ -392,7 +392,7 @@ fn setup_chunk_material(
         None,
     )));
 
-    let texture = asset_server.load("blocks.png");
+    let texture = asset_server.load("spritesheet.png");
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),

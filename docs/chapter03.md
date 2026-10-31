@@ -1,5 +1,7 @@
 # The first mesh
 
+![](img/chapter03.png)
+
 I hope you're warmed up, because this is where the real work starts.
 In this chapter we are going to manually generate the mesh for a voxel, rather than using Bevy's built-in `Cuboid` primitive.
 In a real voxel game, we don't want to create a separate cuboid for every voxel.
@@ -100,7 +102,7 @@ To avoid this, we have to give each face its own set of normals, which gives the
 
 For the same reasons we want to bundle voxels together into one big mesh, we often also want to combine multiple smaller textures into a single image.
 
-![](img/blocks.png)
+![](img/spritesheet.png)
 
 But of course, we don't want every face to show the entire image.
 Instead, we need some way to select a specific region of the texture for different parts of the mesh.

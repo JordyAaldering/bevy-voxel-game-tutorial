@@ -1,6 +1,8 @@
+mod coords;
 mod screenshot;
 
 use crate::{
+    coords::*,
     screenshot::ScreenshotPlugin,
 };
 
@@ -10,6 +12,7 @@ use bevy::{
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
     mesh::{Indices, PrimitiveTopology},
+    pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -20,6 +23,9 @@ use bevy_inspector_egui::{
     },
     quick::WorldInspectorPlugin,
 };
+
+const CHUNK_WIDTH: usize = 3;
+const CHUNK_HEIGHT: usize = 4;
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -146,8 +152,13 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            WireframePlugin::default(),
             ScreenshotPlugin::default(),
         ))
+        .insert_resource(WireframeConfig {
+            global: true,
+            ..default()
+        })
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_systems(Startup, (

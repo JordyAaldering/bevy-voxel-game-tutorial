@@ -1,5 +1,7 @@
 # Creating a chunk
 
+![](img/chapter04.png)
+
 The whole point of creating our own mesh was to more efficiently generate chunks, so let's do that, shall we?
 Chunks are at the core of our game, so it's worth first thinking carefully about how we represent our data.
 

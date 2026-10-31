@@ -31,8 +31,8 @@ use bevy_inspector_egui::{
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
 
-const ATLAS_ROWS: u32 = 4;
-const ATLAS_COLUMNS: u32 = 4;
+const ATLAS_ROWS: u32 = 10;
+const ATLAS_COLUMNS: u32 = 9;
 
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
@@ -91,12 +91,12 @@ impl VoxelType {
         match self {
             Self::Grass => {
                 match direction {
-                    Direction::Top => atlas_index(3, 1),
-                    Direction::Bottom => atlas_index(1, 0),
-                    _ => atlas_index(2, 0),
+                    Direction::Top => atlas_index(5, 1),
+                    Direction::Bottom => atlas_index(7, 5),
+                    _ => atlas_index(7, 4),
                 }
             },
-            Self::Dirt => atlas_index(1, 0),
+            Self::Dirt => atlas_index(7, 5),
             _ => unreachable!(),
         }
     }
@@ -104,14 +104,14 @@ impl VoxelType {
 
 #[derive(Clone)]
 pub struct ChunkData {
-    coord: ChunkCoord,
+    _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
     fn new(coord: ChunkCoord) -> Self {
         Self {
-            coord,
+            _coord: coord,
             voxels: [VoxelType::Air; _],
         }
     }
@@ -192,7 +192,7 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
-            PhysicsPlugin,
+            PhysicsPlugin::new(is_gamemode_survival),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -267,7 +267,7 @@ fn spawn_world(
     ));
     let layout = layouts.get(&layout).unwrap();
 
-    let texture = asset_server.load("blocks.png");
+    let texture = asset_server.load("spritesheet.png");
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
