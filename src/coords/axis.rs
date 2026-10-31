@@ -8,7 +8,7 @@ pub enum Axis {
 }
 
 impl Axis {
-    pub fn get(self, v: Vec3) -> f32 {
+    pub fn get(self, v: &Vec3) -> f32 {
         match self {
             Self::X => v.x,
             Self::Y => v.y,
@@ -22,5 +22,9 @@ impl Axis {
             Self::Y => v.y = value,
             Self::Z => v.z = value,
         }
+    }
+
+    pub fn upd(self, v: &mut Vec3, f: impl FnOnce(f32) -> f32) {
+        Self::set(self, v, f(Self::get(self, v)));
     }
 }

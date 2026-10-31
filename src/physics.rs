@@ -1,4 +1,14 @@
-use crate::{GameMode, Player, VoxelWorld, coords::{Axis, WorldCoord}};
+mod aabb;
+
+pub use aabb::Aabb;
+
+use crate::{
+    coords::{Axis, WorldCoord},
+    Player,
+    VoxelWorld,
+};
+
+use std::marker::PhantomData;
 
 use bevy::prelude::*;
 
@@ -11,19 +21,34 @@ const COLLISION_EPSILON: f32 = 1e-3;
 
 const GRAVITY: f32 = 20.0;
 
-pub struct PhysicsPlugin;
+pub struct PhysicsPlugin<F, M> {
+    run_condition: F,
+    _marker: PhantomData<fn() -> M>,
+}
 
-impl Plugin for PhysicsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (
-            player_physics
-                .run_if(is_gamemode_survival),
-        ));
+impl<F, M> PhysicsPlugin<F, M>
+where
+    F: SystemCondition<M>,
+{
+    pub fn new(run_condition: F) -> Self {
+        Self {
+            run_condition,
+            _marker: PhantomData,
+        }
     }
 }
 
-fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
-    *mode == GameMode::Survival
+impl<F, M> Plugin for PhysicsPlugin<F, M>
+where
+    F: Clone + SystemCondition<M> + Send + Sync + 'static,
+    M: 'static
+{
+    fn build(&self, app: &mut App) {
+        app.add_systems(FixedUpdate, (
+            player_physics
+                .run_if(self.run_condition.clone()),
+        ));
+    }
 }
 
 fn player_physics(
@@ -55,14 +80,13 @@ fn move_axis(
     dt: f32,
     axis: Axis,
 ) {
-    let velocity = Axis::get(axis, player.velocity);
+    let velocity = axis.get(&player.velocity);
 
     if velocity == 0.0 {
         return;
     }
 
-    let axis_position = Axis::get(axis, *position) + velocity * dt;
-    Axis::set(axis, position, axis_position);
+    axis.upd(position, |pos| pos + velocity * dt);
 
     let min = Vec3::new(
         position.x - PLAYER_WIDTH_HALF,

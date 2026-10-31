@@ -1,4 +1,3 @@
-mod aabb;
 mod coords;
 mod editor;
 mod meshdata;

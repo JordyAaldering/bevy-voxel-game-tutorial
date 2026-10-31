@@ -1,4 +1,3 @@
-mod aabb;
 mod biome;
 mod coords;
 mod editor;
@@ -604,7 +603,7 @@ fn main() -> AppExit {
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
             ScreenshotPlugin::default(),
-            PhysicsPlugin,
+            PhysicsPlugin::new(is_gamemode_survival),
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
