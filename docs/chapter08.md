@@ -66,7 +66,9 @@ To setup asynchronous generation of meshes we need a few things:
 
 ---
 
-Is NeedsRemesh still needed?
+Note that the `NeedsRemesh` component is removed when the task is spawned.
+This way, if a chunk somehow gets modified whilst its chunk it being generated, it will remain dirty after the mesh is finished, triggering another mesh generation task.
+It might be possible to cancel the task, which would avoid some unnecessary work, but the current approach is a good compromise between simplicity and performance.
 
 A task cannot borrow the `VoxelWorld`, because the main thread keeps modifying it.
 Instead, the task gets shared handles to everything it needs: the chunk, its four neighbours (to hide faces on the chunk border), and a copy of the atlas layout.
