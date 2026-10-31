@@ -1,9 +1,11 @@
 mod coordinates;
 mod direction;
+mod screenshot;
 
 use crate::{
-    coordinates::VoxelCoord,
+    coordinates::{ChunkCoord, VoxelCoord},
     direction::Direction,
+    screenshot::ScreenshotPlugin,
 };
 
 use std::{mem, ops::{Index, IndexMut}};
@@ -40,7 +42,7 @@ struct CameraSettings {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
 }
@@ -51,11 +53,19 @@ impl VoxelType {
     }
 }
 
-struct ChunkData {
+pub struct ChunkData {
+    coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
+    fn new(coord: ChunkCoord) -> Self {
+        Self {
+            coord,
+            voxels: [VoxelType::Air; _],
+        }
+    }
+
     fn index(x: usize, y: usize, z: usize) -> usize {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
@@ -194,6 +204,7 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
@@ -228,6 +239,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(5.0, 6.0, 11.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
@@ -238,7 +254,8 @@ fn spawn_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
+    let coord = ChunkCoord::new(0, 0);
+    let mut chunk = ChunkData::new(coord);
 
     for z in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
@@ -250,7 +267,7 @@ fn spawn_chunk(
     }
 
     commands.spawn((
-        Name::new("Chunk (0, 0)"),
+        Name::new(format!("Chunk {coord}")),
         Transform::from_xyz(0.0, 0.0, 0.0),
         Mesh3d(meshes.add(build_mesh(&chunk))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
@@ -277,7 +294,6 @@ fn build_mesh(chunk: &ChunkData) -> Mesh {
 fn is_face_visible(chunk: &ChunkData, voxel_pos: VoxelCoord, direction: Direction) -> bool {
     chunk.get_neighbor_voxel(voxel_pos, direction)
         .is_none_or(VoxelType::is_transparent)
-
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {

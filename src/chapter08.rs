@@ -200,6 +200,19 @@ struct VoxelWorld {
 struct VoxelAtlas(TextureAtlasLayout);
 
 impl VoxelWorld {
+    fn add_chunk(&mut self, pos: ChunkCoord, chunk: ChunkData) {
+        debug_assert!(!self.chunks.contains_key(&pos));
+        self.chunks.insert(pos, Arc::new(chunk));
+    }
+
+    fn get_chunk(&self, pos: ChunkCoord) -> Option<&Arc<ChunkData>> {
+        self.chunks.get(&pos)
+    }
+
+    fn get_chunk_mut(&mut self, pos: ChunkCoord) -> Option<&mut Arc<ChunkData>> {
+        self.chunks.get_mut(&pos)
+    }
+
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
             .is_some_and(|voxel| voxel.is_solid())
@@ -215,12 +228,12 @@ impl VoxelWorld {
             NeedsRemesh,
         )).id();
 
-        if let Some(chunk) = self.chunks.get_mut(&coord) {
+        if let Some(chunk) = self.get_chunk_mut(coord) {
             Arc::make_mut(chunk).set_entity(entity);
         } else {
             let mut chunk = ChunkData::new(coord, entity);
             generate_chunk(&mut chunk);
-            self.chunks.insert(coord, Arc::new(chunk));
+            self.add_chunk(coord, chunk);
         }
 
         // Existing neighbors previously treated this side as open, so their border faces change
@@ -241,7 +254,7 @@ impl VoxelWorld {
         }
 
         let chunk_pos = pos.chunk_coord();
-        self.chunks.get(&chunk_pos).map(|chunk| {
+        self.get_chunk(chunk_pos).map(|chunk| {
             let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
@@ -250,7 +263,7 @@ impl VoxelWorld {
     fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
-        let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
+        let chunk = self.get_chunk_mut(chunk_pos).unwrap();
         Arc::make_mut(chunk)[voxel_pos] = voxel;
 
         if let Some(entity) = chunk.entity {
@@ -288,7 +301,7 @@ impl VoxelWorld {
 
     fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
         let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-        self.chunks.get(&neighbor_pos).map(|chunk| &**chunk)
+        self.get_chunk(neighbor_pos).map(|chunk| &**chunk)
     }
 }
 
@@ -494,7 +507,7 @@ fn remesh_chunks(
     let pool = AsyncComputeTaskPool::get();
 
     for (entity, chunk) in &chunks {
-        let Some(data) = world.chunks.get(&chunk.coord) else {
+        let Some(data) = world.get_chunk(chunk.coord) else {
             continue;
         };
 

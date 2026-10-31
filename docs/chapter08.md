@@ -51,7 +51,7 @@ Remember that, if we modify a voxel on the edge of a chunk, we also need to modi
 ### Async tasks
 
 We don't want to block the main thread while meshing chunks, which would otherwise cause stuttering.
-For this we use [async tasks](https://bevy.org/examples/async-tasks/async-channel-pattern).
+For this we use [async tasks](https://bevy-cheatbook.github.io/fundamentals/async-compute.html) ([example](https://bevy.org/examples/async-tasks/async-channel-pattern)).
 Async tasks run in a separate thread, which means the main game loop can continue while the mesh is being built, possibly across multiple frames.
 
 A task cannot borrow the `VoxelWorld`, because the main thread keeps modifying it.

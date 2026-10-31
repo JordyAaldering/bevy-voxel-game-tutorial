@@ -707,8 +707,6 @@ fn spawn_player(
                     fov: 0.9,
                     ..default()
                 }),
-                // MSAA can cause sampling of neighboring tiles in the voxel atlas,
-                // which shows up as thin white lines on the edges of voxels.
                 Msaa::Off,
                 editor_state.game_camera_target(),
                 Transform {

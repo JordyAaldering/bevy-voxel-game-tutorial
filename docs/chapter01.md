@@ -30,7 +30,9 @@ The camera entity needs `Camera3d` and `Transform` components.
 Optionally, you can add a `Name` component for debugging.
 Use the default camera component, but move the transform slightly up, back, and to the right so it isn't inside the voxel.
 If you're unsure how to construct these components, use your IDE's autocompletion or consult the documentation.
-To make the camera look at the voxel, we can use `Transform::looking_at`, so no rotational math is required.
+To make the camera look at the voxel, we can use `Transform::looking_at`, so no rotational maths is required.
+Also disable MSAA with `Msaa::Off`, because it can cause artifacts when sampling the voxel atlas.
+If you want to understand the field of view, or other camera settings, you can adjust the perspective projection by adding a `Projection::Perspective` component.
 
 ### Global lighting
 

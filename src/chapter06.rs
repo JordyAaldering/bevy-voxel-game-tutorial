@@ -1,9 +1,11 @@
 mod coordinates;
 mod direction;
+mod screenshot;
 
 use crate::{
     coordinates::{ChunkCoord, VoxelCoord},
     direction::Direction,
+    screenshot::ScreenshotPlugin,
 };
 
 use std::{mem, ops::{Index, IndexMut}};
@@ -42,7 +44,7 @@ struct CameraSettings {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -94,11 +96,19 @@ impl TextureAtlas {
     }
 }
 
-struct ChunkData {
+pub struct ChunkData {
+    coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
+    fn new(coord: ChunkCoord) -> Self {
+        Self {
+            coord,
+            voxels: [VoxelType::Air; _],
+        }
+    }
+
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let neighbor_pos = pos + direction;
         if neighbor_pos.in_bounds() {
@@ -255,6 +265,7 @@ fn main() -> AppExit {
                 .set(ImagePlugin::default_nearest()),
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<VoxelWorld>()
         .init_resource::<CameraSettings>()
@@ -290,6 +301,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(5.0, 6.0, 11.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
@@ -313,8 +329,9 @@ fn spawn_world(
 
     for z in -1..=1 {
         for x in -1..=1 {
-            let chunk = generate_chunk(x, z);
-            world.add_chunk(ChunkCoord::new(x, z), chunk);
+            let coord = ChunkCoord::new(x, z);
+            let chunk = generate_chunk(coord);
+            world.add_chunk(coord, chunk);
         }
     }
 
@@ -328,11 +345,11 @@ fn spawn_world(
     }
 }
 
-fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
-    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
+fn generate_chunk(coord: ChunkCoord) -> ChunkData {
+    let mut chunk = ChunkData::new(coord);
 
     for z in 0..CHUNK_WIDTH {
-        let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
+        let max_y = (coord.x + coord.z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);

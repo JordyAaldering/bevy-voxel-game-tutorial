@@ -1,14 +1,24 @@
+mod screenshot;
+
+use crate::{
+    screenshot::ScreenshotPlugin,
+};
+
 use better_default::Default;
-use bevy::prelude::*;
 use bevy::{
+    prelude::*,
     input::mouse::AccumulatedMouseMotion,
     pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -27,8 +37,9 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
-            // ResourceInspectorPlugin::<CameraSettings>::default(),
+            ResourceInspectorPlugin::<CameraSettings>::default(),
             WireframePlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .insert_resource(WireframeConfig {
             global: true,
@@ -67,6 +78,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(1.5, 2.0, 4.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));

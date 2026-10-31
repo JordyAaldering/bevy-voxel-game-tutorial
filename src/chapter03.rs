@@ -1,7 +1,9 @@
 mod direction;
+mod screenshot;
 
 use crate::{
     direction::Direction,
+    screenshot::ScreenshotPlugin,
 };
 
 use better_default::Default;
@@ -55,7 +57,7 @@ impl Face {
     /// (0,0,1)-------------------(1,0,1)
     /// ```
     ///
-    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
+    /// Note that the z axis points forward, so the going back decreases the z coordinate.
     fn vertices(&self) -> [Vec3; 4] {
         let o = Vec3::ZERO;
 
@@ -146,6 +148,7 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
@@ -180,6 +183,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(1.5, 2.0, 4.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));

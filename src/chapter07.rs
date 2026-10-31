@@ -115,12 +115,14 @@ impl VoxelType {
 
 #[derive(Clone)]
 pub struct ChunkData {
+    coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
-    fn new(coord: ChunkCoord, entity: Entity) -> Self {
+    fn new(coord: ChunkCoord) -> Self {
         Self {
+            coord,
             voxels: [VoxelType::Air; _],
         }
     }
@@ -186,7 +188,7 @@ impl VoxelWorld {
         }
 
         let chunk_pos = pos.chunk_coord();
-        self.chunks.get(&chunk_pos).map(|chunk| {
+        self.get_chunk(chunk_pos).map(|chunk| {
             let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
@@ -246,7 +248,12 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
             Name::new("Player"),
             Player::default(),
-            Transform::from_xyz(1.5, 5.0, 1.5),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
+            Transform::from_xyz(0.5, 5.0, 0.5),
         ))
         .with_children(|commands| {
             commands.spawn((
@@ -285,8 +292,9 @@ fn spawn_world(
 
     for z in -1..=1 {
         for x in -1..=1 {
-            let chunk = generate_chunk(x, z);
-            world.add_chunk(ChunkCoord::new(x, z), chunk);
+            let coord = ChunkCoord::new(x, z);
+            let chunk = generate_chunk(coord);
+            world.add_chunk(coord, chunk);
         }
     }
 
@@ -300,11 +308,11 @@ fn spawn_world(
     }
 }
 
-fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
-    let mut chunk = ChunkData::new();
+fn generate_chunk(coord: ChunkCoord) -> ChunkData {
+    let mut chunk = ChunkData::new(coord);
 
     for z in 0..CHUNK_WIDTH {
-        let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
+        let max_y = (coord.x + coord.z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);

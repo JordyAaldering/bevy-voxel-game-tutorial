@@ -44,7 +44,7 @@ struct CameraSettings {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
 }
@@ -55,11 +55,19 @@ impl VoxelType {
     }
 }
 
-struct ChunkData {
+pub struct ChunkData {
+    coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
+    fn new(coord: ChunkCoord) -> Self {
+        Self {
+            coord,
+            voxels: [VoxelType::Air; _],
+        }
+    }
+
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let neighbor_pos = pos + direction;
         if neighbor_pos.in_bounds() {
@@ -249,6 +257,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(5.0, 6.0, 11.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
@@ -266,26 +279,27 @@ fn spawn_world(
 
     for z in -1..=1 {
         for x in -1..=1 {
-            let chunk = generate_chunk(x, z);
-            world.add_chunk(ChunkCoord::new(x, z), chunk);
+            let coord = ChunkCoord::new(x, z);
+            let chunk = generate_chunk(coord);
+            world.add_chunk(coord, chunk);
         }
     }
 
-    for (&chunk_pos, chunk) in &world.chunks {
+    for (&coord, chunk) in &world.chunks {
         commands.spawn((
-            Name::new(format!("Chunk {chunk_pos}")),
-            Transform::from_translation(chunk_pos.position()),
-            Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world))),
+            Name::new(format!("Chunk {coord}")),
+            Transform::from_translation(coord.position()),
+            Mesh3d(meshes.add(build_mesh(chunk, coord, &world))),
             MeshMaterial3d(material.clone()),
         ));
     }
 }
 
-fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
-    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
+fn generate_chunk(coord: ChunkCoord) -> ChunkData {
+    let mut chunk = ChunkData::new(coord);
 
     for z in 0..CHUNK_WIDTH {
-        let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
+        let max_y = (coord.x + coord.z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);
@@ -401,11 +415,14 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
 
         ui.separator();
 
-        for (position, chunk) in &world.chunks {
-            let solid_voxels = chunk.voxels.iter().filter(|&&v| v == VoxelType::Grass).count();
+        for (coord, chunk) in &world.chunks {
+            let solid_voxels = chunk.voxels.iter()
+                .filter(|v| !matches!(v, VoxelType::Air))
+                .count();
+
             ui.collapsing(
-                format!("Chunk ({}, {})", position.x, position.z),
-               |ui| ui.label(format!("Solid voxels: {}", solid_voxels)),
+                format!("Chunk {coord}"),
+               |ui| ui.label(format!("Solid voxels: {solid_voxels}")),
             );
         }
     });

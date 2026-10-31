@@ -1,5 +1,11 @@
-use bevy::prelude::*;
+mod screenshot;
+
+use crate::{
+    screenshot::ScreenshotPlugin,
+};
+
 use bevy::{
+    prelude::*,
     input::mouse::AccumulatedMouseMotion,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
@@ -11,6 +17,7 @@ fn main() -> AppExit {
     App::new()
         .add_plugins((
             DefaultPlugins,
+            ScreenshotPlugin::default(),
         ))
         .add_systems(Startup, (
             spawn_global_illumination,
@@ -43,6 +50,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+            ..default()
+        }),
+        Msaa::Off,
         Transform::from_xyz(1.5, 2.0, 4.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
