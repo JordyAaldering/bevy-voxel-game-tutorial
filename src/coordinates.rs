@@ -190,10 +190,10 @@ impl std::ops::Add<CompassQuadrant> for ChunkCoord {
 
     fn add(self, rhs: CompassQuadrant) -> Self::Output {
         match rhs {
-            CompassQuadrant::North => Self { z: self.z + 1, ..self },
             CompassQuadrant::East  => Self { x: self.x + 1, ..self },
-            CompassQuadrant::South => Self { z: self.z - 1, ..self },
             CompassQuadrant::West  => Self { x: self.x - 1, ..self },
+            CompassQuadrant::North => Self { z: self.z + 1, ..self },
+            CompassQuadrant::South => Self { z: self.z - 1, ..self },
         }
     }
 }

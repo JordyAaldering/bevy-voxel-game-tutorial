@@ -54,6 +54,20 @@ We don't want to block the main thread while meshing chunks, which would otherwi
 For this we use [async tasks](https://bevy-cheatbook.github.io/fundamentals/async-compute.html) ([example](https://bevy.org/examples/async-tasks/async-channel-pattern)).
 Async tasks run in a separate thread, which means the main game loop can continue while the mesh is being built, possibly across multiple frames.
 
+To setup asynchronous generation of meshes we need a few things:
+
+- A component definition containing the mesh task: `Task<Mesh>`.
+  This component is added to a chunk entity when it is marked as dirty, and removed when the task is finished.
+- A chunk may be modified while another chunk is reading it, so we need to make the world contain a hashmap of `Arc<ChunkData>` instead of `ChunkData`.
+  This allows us to hand out shared references to chunks, while still allowing the main thread to modify them.
+- A function to poll the tasks each frame, and insert the finished mesh into the assets when it is done.
+- A function that checks for dirty chunks, and spawns a task to build the mesh for each dirty chunk.
+- The task itself, which builds the mesh for a chunk.
+
+---
+
+Is NeedsRemesh still needed?
+
 A task cannot borrow the `VoxelWorld`, because the main thread keeps modifying it.
 Instead, the task gets shared handles to everything it needs: the chunk, its four neighbours (to hide faces on the chunk border), and a copy of the atlas layout.
 To make this cheap the world stores chunks as `Arc<ChunkData>`, so handing a chunk to a task only copies a pointer, not the voxels.

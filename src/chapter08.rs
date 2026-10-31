@@ -222,7 +222,7 @@ impl VoxelWorld {
     /// if it does not exist yet, so earlier modifications survive unloading.
     fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
         let entity = commands.spawn((
-            Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
+            Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
             Chunk { coord },
             NeedsRemesh,
@@ -237,11 +237,16 @@ impl VoxelWorld {
         }
 
         // Existing neighbors previously treated this side as open, so their border faces change
-        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            if let Some(neighbor) = self.get_chunk_neighbor(coord, dx, dz) {
-                if let Some(neighbor_entity) = neighbor.entity {
-                    commands.entity(neighbor_entity).insert(NeedsRemesh);
-                }
+        for compass in [
+            CompassQuadrant::North,
+            CompassQuadrant::East,
+            CompassQuadrant::South,
+            CompassQuadrant::West,
+        ] {
+            if let Some(neighbor) = self.get_chunk(coord + compass)
+                && let Some(neighbor_entity) = neighbor.entity
+            {
+                commands.entity(neighbor_entity).insert(NeedsRemesh);
             }
         }
 
@@ -272,36 +277,31 @@ impl VoxelWorld {
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, -1, 0) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
+            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::West)
+                && let Some(entity) = neighbor.entity
+            {
+                commands.entity(entity).insert(NeedsRemesh);
             }
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 1, 0) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
+            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::East)
+                && let Some(entity) = neighbor.entity
+            {
+                commands.entity(entity).insert(NeedsRemesh);
             }
         }
         if voxel_pos.z == 0 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, -1) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
+            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::South)
+                && let Some(entity) = neighbor.entity
+            {
+                commands.entity(entity).insert(NeedsRemesh);
             }
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, 1) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
+            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::North)
+                && let Some(entity) = neighbor.entity
+            {
+                commands.entity(entity).insert(NeedsRemesh);
             }
         }
-    }
-
-    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
-        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-        self.get_chunk(neighbor_pos).map(|chunk| &**chunk)
     }
 }
 
@@ -364,6 +364,11 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
             Name::new("Player"),
             Player::default(),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
             Transform::from_xyz(0.5, 5.0, 0.5),
         ))
         .with_children(|commands| {
@@ -425,6 +430,61 @@ fn generate_chunk(chunk: &mut ChunkData) {
     }
 }
 
+/// Applies the meshes of finished [`MeshTask`]s.
+fn poll_mesh_tasks(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut tasks: Query<(Entity, &mut MeshTask, Option<&Mesh3d>)>,
+) -> Result<(), BevyError> {
+    for (entity, mut task, mesh3d) in &mut tasks {
+        let Some(mesh) = block_on(future::poll_once(&mut task.0)) else {
+            continue;
+        };
+
+        match mesh3d {
+            Some(handle) => {
+                // The chunk already has a mesh, so replace it
+                meshes.insert(&handle.0, mesh)?;
+            }
+            None => {
+                // The chunk does not have a mesh yet, so spawn one
+                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            }
+        }
+
+        commands.entity(entity).remove::<MeshTask>();
+    }
+
+    Ok(())
+}
+
+/// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
+/// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
+fn remesh_chunks(
+    mut commands: Commands,
+    world: Res<VoxelWorld>,
+    atlas: Res<VoxelAtlas>,
+    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
+) {
+    let pool = AsyncComputeTaskPool::get();
+
+    for (entity, chunk) in &chunks {
+        let Some(data) = world.get_chunk(chunk.coord) else {
+            continue;
+        };
+
+        // The task cannot borrow the world, so it gets shared handles to the data it needs
+        let data = Arc::clone(data);
+        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
+        let atlas = atlas.0.clone();
+        let task = pool.spawn(async move { build_mesh(&data, &neighbors, &atlas) });
+
+        commands.entity(entity)
+            .remove::<NeedsRemesh>()
+            .insert(MeshTask(task));
+    }
+}
+
 /// Builds the mesh from owned data only, so it can run on another thread.
 fn build_mesh(chunk: &ChunkData, neighbors: &ChunkNeighbors, atlas: &TextureAtlasLayout) -> Mesh {
     let mut mesh_data = MeshData::new(atlas);
@@ -468,59 +528,6 @@ fn is_face_visible(chunk: &ChunkData, neighbors: &ChunkNeighbors, voxel_pos: Vox
 
     neighbor_chunk[neighbor_pos]
         .is_transparent()
-}
-
-/// Applies the meshes of finished [`MeshTask`]s.
-fn poll_mesh_tasks(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut tasks: Query<(Entity, &mut MeshTask, Option<&Mesh3d>)>,
-) -> Result<(), BevyError> {
-    for (entity, mut task, mesh3d) in &mut tasks {
-        let Some(mesh) = block_on(future::poll_once(&mut task.0)) else {
-            continue;
-        };
-
-        match mesh3d {
-            Some(handle) => {
-                meshes.insert(&handle.0, mesh)?;
-            }
-            None => {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-            }
-        }
-
-        commands.entity(entity).remove::<MeshTask>();
-    }
-
-    Ok(())
-}
-
-/// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
-/// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
-fn remesh_chunks(
-    mut commands: Commands,
-    world: Res<VoxelWorld>,
-    atlas: Res<VoxelAtlas>,
-    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
-) {
-    let pool = AsyncComputeTaskPool::get();
-
-    for (entity, chunk) in &chunks {
-        let Some(data) = world.get_chunk(chunk.coord) else {
-            continue;
-        };
-
-        // The task cannot borrow the world, so it gets shared handles to the data it needs
-        let data = Arc::clone(data);
-        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
-        let atlas = atlas.0.clone();
-        let task = pool.spawn(async move { build_mesh(&data, &neighbors, &atlas) });
-
-        commands.entity(entity)
-            .remove::<NeedsRemesh>()
-            .insert(MeshTask(task));
-    }
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
