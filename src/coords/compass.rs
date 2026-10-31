@@ -1,5 +1,3 @@
-use bevy::math::Vec3;
-
 use super::Direction;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
