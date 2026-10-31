@@ -1,6 +1,4 @@
-mod axis;
-mod coordinates;
-mod direction;
+mod coords;
 mod editor;
 mod meshdata;
 mod noise;
@@ -10,8 +8,7 @@ mod telemetry;
 mod voxel_atlas;
 
 use crate::{
-    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
-    direction::Direction,
+    coords::*,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
     noise::NoiseSettings,
@@ -29,7 +26,6 @@ use bevy::{
     app::OnAppExitSystems,
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
     input::mouse::AccumulatedMouseMotion,
-    math::CompassQuadrant,
     platform::collections::HashMap,
     time::common_conditions::on_timer,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -752,10 +748,10 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
         .expect("Mesh generation requires all neighboring chunk data");
 
     let neighbor_pos = match compass {
-        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
-        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
-        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
+        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]

@@ -1,6 +1,4 @@
-mod axis;
-mod coordinates;
-mod direction;
+mod coords;
 mod editor;
 mod meshdata;
 mod opensimplex2s;
@@ -8,8 +6,7 @@ mod telemetry;
 
 use crate::{
     axis::Axis,
-    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
-    direction::Direction,
+    coords::*,
     editor::EditorState,
     meshdata::MeshData,
     telemetry::{Telemetry, TelemetryPublisher},

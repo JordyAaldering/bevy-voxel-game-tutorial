@@ -1,4 +1,6 @@
-use bevy::math::{CompassQuadrant, Vec3};
+use super::Compass;
+
+use bevy::math::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -65,15 +67,15 @@ impl Direction {
     }
 }
 
-impl TryInto<CompassQuadrant> for Direction {
+impl TryInto<Compass> for Direction {
     type Error = ();
 
-    fn try_into(self) -> Result<CompassQuadrant, Self::Error> {
+    fn try_into(self) -> Result<Compass, Self::Error> {
         match self {
-            Self::Right => Ok(CompassQuadrant::East),
-            Self::Left  => Ok(CompassQuadrant::West),
-            Self::Front => Ok(CompassQuadrant::North),
-            Self::Back  => Ok(CompassQuadrant::South),
+            Self::Right => Ok(Compass::Right),
+            Self::Left  => Ok(Compass::Left),
+            Self::Front => Ok(Compass::Front),
+            Self::Back  => Ok(Compass::Back),
             _ => Err(())
         }
     }

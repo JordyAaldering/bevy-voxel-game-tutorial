@@ -1,4 +1,4 @@
-use crate::{GameMode, Player, VoxelWorld, axis::Axis, coordinates::WorldCoord};
+use crate::{GameMode, Player, VoxelWorld, coords::{Axis, WorldCoord}};
 
 use bevy::prelude::*;
 

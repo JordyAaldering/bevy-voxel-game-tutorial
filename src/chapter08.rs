@@ -1,7 +1,5 @@
-mod axis;
 mod chunk_neighbors;
-mod coordinates;
-mod direction;
+mod coords;
 mod meshdata;
 mod physics;
 mod raycast;
@@ -9,8 +7,7 @@ mod screenshot;
 
 use crate::{
     chunk_neighbors::ChunkNeighbors,
-    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
-    direction::Direction,
+    coords::*,
     meshdata::MeshData,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
@@ -23,7 +20,6 @@ use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
-    math::CompassQuadrant,
     platform::collections::HashMap,
     tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -233,12 +229,7 @@ impl VoxelWorld {
         }
 
         // Existing neighbors previously treated this side as open, so their border faces change
-        for compass in [
-            CompassQuadrant::North,
-            CompassQuadrant::East,
-            CompassQuadrant::South,
-            CompassQuadrant::West,
-        ] {
+        for compass in Compass::iter() {
             if let Some(neighbor) = self.get_chunk(coord + compass)
                 && let Some(neighbor_entity) = neighbor.entity
             {
@@ -273,26 +264,26 @@ impl VoxelWorld {
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::West)
+            if let Some(neighbor) = self.get_chunk(chunk_pos + Compass::Left)
                 && let Some(entity) = neighbor.entity
             {
                 commands.entity(entity).insert(NeedsRemesh);
             }
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::East)
+            if let Some(neighbor) = self.get_chunk(chunk_pos + Compass::Right)
                 && let Some(entity) = neighbor.entity
             {
                 commands.entity(entity).insert(NeedsRemesh);
             }
         }
         if voxel_pos.z == 0 {
-            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::South)
+            if let Some(neighbor) = self.get_chunk(chunk_pos + Compass::Back)
                 && let Some(entity) = neighbor.entity
             {
                 commands.entity(entity).insert(NeedsRemesh);
             }
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk(chunk_pos + CompassQuadrant::North)
+            if let Some(neighbor) = self.get_chunk(chunk_pos + Compass::Front)
                 && let Some(entity) = neighbor.entity
             {
                 commands.entity(entity).insert(NeedsRemesh);
@@ -513,10 +504,10 @@ fn is_face_visible(chunk: &ChunkData, neighbors: &ChunkNeighbors, voxel_pos: Vox
     };
 
     let neighbor_pos = match compass {
-        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
-        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
-        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
+        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]

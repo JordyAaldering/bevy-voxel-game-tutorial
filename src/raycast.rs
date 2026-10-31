@@ -1,18 +1,13 @@
-use crate::{
-    VoxelWorld,
-    coordinates::WorldCoord,
-    direction::Direction,
-};
+use crate::{Direction, VoxelWorld, WorldCoord};
 
 use bevy::math::{Dir3, Vec3};
 
 /// A raycast through the voxel world, returning the first solid voxel hit.
-///
-/// * `coord` is the world coordinate of the voxel that was hit.
-/// * `direction` is the face of the voxel that was hit.
 #[derive(Debug)]
 pub struct VoxelHit {
+    /// The world coordinate of the voxel that was hit.
     pub coord: WorldCoord,
+    /// The face of the voxel that was hit.
     pub direction: Direction,
 }
 

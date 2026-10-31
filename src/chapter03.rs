@@ -1,8 +1,6 @@
-mod direction;
 mod screenshot;
 
 use crate::{
-    direction::Direction,
     screenshot::ScreenshotPlugin,
 };
 

@@ -1,4 +1,4 @@
-use crate::direction::Direction;
+use crate::Direction;
 
 use std::mem;
 

@@ -1,4 +1,4 @@
-use crate::coordinates::WorldCoord;
+use crate::coords::WorldCoord;
 
 pub struct Aabb {
     pub min: WorldCoord,

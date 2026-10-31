@@ -1,8 +1,8 @@
-use crate::{ChunkData, coordinates::ChunkCoord};
+use crate::{ChunkData, ChunkCoord, Compass};
 
 use std::{ops::Index, sync::Arc};
 
-use bevy::{math::CompassQuadrant, platform::collections::HashMap};
+use bevy::platform::collections::HashMap;
 
 pub struct ChunkNeighbors {
     pub north: Option<Arc<ChunkData>>,
@@ -21,15 +21,15 @@ impl ChunkNeighbors {
     }
 }
 
-impl Index<CompassQuadrant> for ChunkNeighbors {
+impl Index<Compass> for ChunkNeighbors {
     type Output = Option<Arc<ChunkData>>;
 
-    fn index(&self, index: CompassQuadrant) -> &Self::Output {
+    fn index(&self, index: Compass) -> &Self::Output {
         match index {
-            CompassQuadrant::North => &self.north,
-            CompassQuadrant::East  => &self.east,
-            CompassQuadrant::South => &self.south,
-            CompassQuadrant::West  => &self.west,
+            Compass::Front => &self.north,
+            Compass::Right  => &self.east,
+            Compass::Back => &self.south,
+            Compass::Left  => &self.west,
         }
     }
 }

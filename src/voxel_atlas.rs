@@ -1,3 +1,5 @@
+use crate::{coords::Direction, VoxelType};
+
 use std::{collections::BTreeSet, fs, path::Path};
 
 use better_default::Default;
@@ -7,8 +9,6 @@ use bevy::{
     image::{CompressedImageFormats, ImageSampler, ImageType, TextureAtlasBuilder},
     platform::collections::HashMap,
 };
-
-use crate::{VoxelType, direction::Direction};
 
 const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
 

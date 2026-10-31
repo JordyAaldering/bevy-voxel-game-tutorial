@@ -1,10 +1,8 @@
-mod coordinates;
-mod direction;
+mod coords;
 mod screenshot;
 
 use crate::{
-    coordinates::{ChunkCoord, VoxelCoord},
-    direction::Direction,
+    coords::*,
     screenshot::ScreenshotPlugin,
 };
 

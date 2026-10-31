@@ -1,13 +1,10 @@
-mod axis;
-mod coordinates;
-mod direction;
+mod coords;
 mod meshdata;
 mod physics;
 mod screenshot;
 
 use crate::{
-    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
-    direction::Direction,
+    coords::*,
     meshdata::MeshData,
     physics::PhysicsPlugin,
     screenshot::ScreenshotPlugin,
@@ -19,7 +16,6 @@ use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
-    math::CompassQuadrant,
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
@@ -352,10 +348,10 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
     };
 
     let neighbor_pos = match compass {
-        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
-        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
-        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
+        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]
