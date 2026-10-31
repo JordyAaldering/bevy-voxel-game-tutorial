@@ -423,6 +423,33 @@ fn generate_chunk(chunk: &mut ChunkData) {
     }
 }
 
+/// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
+/// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
+fn remesh_chunks(
+    mut commands: Commands,
+    world: Res<VoxelWorld>,
+    atlas: Res<VoxelAtlas>,
+    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
+) {
+    let pool = AsyncComputeTaskPool::get();
+
+    for (entity, chunk) in &chunks {
+        let Some(data) = world.get_chunk(chunk.coord) else {
+            continue;
+        };
+
+        // The task cannot borrow the world, so it gets shared handles to the data it needs
+        let data = Arc::clone(data);
+        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
+        let atlas: TextureAtlasLayout = atlas.0.clone();
+        let task = pool.spawn(async move { build_mesh(&data, &neighbors, &atlas) });
+
+        commands.entity(entity)
+            .remove::<NeedsRemesh>()
+            .insert(MeshTask(task));
+    }
+}
+
 /// Applies the meshes of finished [`MeshTask`]s.
 fn poll_mesh_tasks(
     mut commands: Commands,
@@ -449,33 +476,6 @@ fn poll_mesh_tasks(
     }
 
     Ok(())
-}
-
-/// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
-/// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
-fn remesh_chunks(
-    mut commands: Commands,
-    world: Res<VoxelWorld>,
-    atlas: Res<VoxelAtlas>,
-    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
-) {
-    let pool = AsyncComputeTaskPool::get();
-
-    for (entity, chunk) in &chunks {
-        let Some(data) = world.get_chunk(chunk.coord) else {
-            continue;
-        };
-
-        // The task cannot borrow the world, so it gets shared handles to the data it needs
-        let data = Arc::clone(data);
-        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
-        let atlas = atlas.0.clone();
-        let task = pool.spawn(async move { build_mesh(&data, &neighbors, &atlas) });
-
-        commands.entity(entity)
-            .remove::<NeedsRemesh>()
-            .insert(MeshTask(task));
-    }
 }
 
 /// Builds the mesh from owned data only, so it can run on another thread.

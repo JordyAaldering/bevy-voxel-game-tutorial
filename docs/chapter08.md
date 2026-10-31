@@ -64,6 +64,18 @@ To setup asynchronous generation of meshes we need a few things:
 - A function that checks for dirty chunks, and spawns a task to build the mesh for each dirty chunk.
 - The task itself, which builds the mesh for a chunk.
 
+The pattern is as follows:
+
+1. A chunk is modified, and marked as dirty by adding the `NeedsRemesh` component.
+2. The `remesh_chunks` system runs every frame, and finds all chunks with `NeedsRemesh`.
+   It removes the `NeedsRemesh` component, and spawns a `build_mesh` task to build the mesh for that chunk.
+   The task is stored in a `MeshTask` component on the chunk entity.
+   - The `build_mesh` task receives the data of the chunk it is going to mesh, and an `Arc` to the neighbouring chunks.
+     An `Arc` is needed because the neighbouring chunks may be modified while the task is running, and we want to ensure the task sees a consistent snapshot of the neighbouring chunks.
+3. The `build_mesh` task runs is a separate thread, and returns the generated mesh when it is done.
+4. The `poll_mesh_tasks` system runs every frame, and checks all chunks with a `MeshTask` component.
+   If the task is finished, it inserts the generated mesh into the chunk entity, and removes the `MeshTask` component.
+
 ---
 
 Note that the `NeedsRemesh` component is removed when the task is spawned.
