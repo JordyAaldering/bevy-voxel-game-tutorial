@@ -25,10 +25,10 @@ impl Compass {
 
     pub const fn opposite(self) -> Self {
         match self {
-            Self::Right  => Self::Left,
-            Self::Left   => Self::Right,
-            Self::Front  => Self::Back,
-            Self::Back   => Self::Front,
+            Self::Right => Self::Left,
+            Self::Left  => Self::Right,
+            Self::Front => Self::Back,
+            Self::Back  => Self::Front,
         }
     }
 }

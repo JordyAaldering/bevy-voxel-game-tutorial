@@ -47,7 +47,6 @@ const MAX_PITCH: f32 = 1.4;
 const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
-const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
 
 #[derive(Resource)]
 struct TerrainConfig {
@@ -105,8 +104,10 @@ struct CameraSettings {
 }
 
 impl CameraSettings {
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
+
     fn path() -> PathBuf {
-        Path::new(SETTINGS_DIR).join("camera.json")
+        Path::new(Self::DIR).join("camera.json")
     }
 
     fn save(&self) {
@@ -242,7 +243,37 @@ impl ChunkGenerationPhase {
             Self::Done => Self::Done,
         }
     }
+
+    /// Which neighbors must have completed the previous phase before this phase can run.
+    fn neighbor_requirement(self) -> NeighborRequirement {
+        match self {
+            Self::HeightGeneration => NeighborRequirement::NONE,
+            Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: false },
+            Self::Done => NeighborRequirement::NONE,
+        }
+    }
 }
+
+/// The set of neighboring chunks that must be ready before a generation phase can run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NeighborRequirement {
+    /// How many chunks away to check, 0 meaning only the chunk itself.
+    radius: i32,
+    /// Whether to also check chunks that are not in the same row or column.
+    diagonal: bool,
+}
+
+impl NeighborRequirement {
+    const NONE: Self = Self { radius: 0, diagonal: false };
+
+    fn offsets(self) -> impl Iterator<Item = (i32, i32)> {
+        let radius = self.radius;
+        (-radius..=radius)
+            .flat_map(move |dz| (-radius..=radius).map(move |dx| (dx, dz)))
+            .filter(move |&(dx, dz)| (dx, dz) != (0, 0) && (self.diagonal || dx == 0 || dz == 0))
+    }
+}
+
 
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 struct ChunkData {
@@ -473,14 +504,13 @@ impl VoxelWorld {
         self.chunks.get(&neighbor_pos)
     }
 
-    fn neighbors_ready_for_mesh(&self, coord: ChunkCoord) -> bool {
-        [(-1, 0), (1, 0), (0, -1), (0, 1)]
-            .into_iter()
+    /// Whether all neighbors required by `phase` have completed the phase before it.
+    fn neighbors_ready_for(&self, coord: ChunkCoord, phase: ChunkGenerationPhase) -> bool {
+        phase.neighbor_requirement()
+            .offsets()
             .all(|(dx, dz)| {
                 self.get_chunk_neighbor(coord, dx, dz)
-                    .is_some_and(|neighbor| {
-                        neighbor.generation_phase >= ChunkGenerationPhase::MeshGeneration
-                    })
+                    .is_some_and(|neighbor| neighbor.generation_phase >= phase)
             })
     }
 
@@ -794,7 +824,7 @@ fn on_chunk_data_changed(
         }
         // A chunk that is already done may need to be meshed again, e.g. after being reloaded
         ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
-            if world.neighbors_ready_for_mesh(coord) {
+            if world.neighbors_ready_for(coord, ChunkGenerationPhase::MeshGeneration) {
                 info!("Generating mesh for chunk {}", coord);
                 commands.entity(event.entity).insert(NeedsRemesh);
                 // Don't advance to the next phase yet, this will happen after the mesh is built
@@ -819,7 +849,7 @@ fn remesh_chunks(
             chunk.coord,
         );
         assert!(
-            world.neighbors_ready_for_mesh(chunk.coord),
+            world.neighbors_ready_for(chunk.coord, ChunkGenerationPhase::MeshGeneration),
             "Chunk {} was marked for remeshing before its neighbors were ready",
             chunk.coord,
         );

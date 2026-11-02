@@ -47,21 +47,12 @@ const CHUNK_HEIGHT: usize = 64;
 // neighbours, so the outermost two rings of loaded chunks are not meshed.
 const CHUNK_LOAD_RADIUS: i32 = 5;
 
-const STRUCTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
-
-const CHUNK_NEIGHBORS: [(i32, i32); 8] = [
-    (-1, -1), (0, -1), (1, -1),
-    (-1,  0),          (1,  0),
-    (-1,  1), (0,  1), (1,  1),
-];
-
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
 
 const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
-const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
 
 /// Structures loaded from `assets/structures`.
 #[derive(Resource)]
@@ -70,12 +61,14 @@ struct Structures {
 }
 
 impl Structures {
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
+
     fn load() -> Result<Self, String> {
         Ok(Self { tree: Self::load_structure("tree")? })
     }
 
     fn load_structure(name: &str) -> Result<Structure, String> {
-        let path = Path::new(STRUCTURES_DIR).join(format!("{name}.json"));
+        let path = Path::new(Self::DIR).join(format!("{name}.json"));
         let json = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         serde_json::from_str(&json).map_err(|e| format!("{}: {e}", path.display()))
     }
@@ -117,8 +110,10 @@ struct CameraSettings {
 }
 
 impl CameraSettings {
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
+
     fn path() -> PathBuf {
-        Path::new(SETTINGS_DIR).join("camera.json")
+        Path::new(Self::DIR).join("camera.json")
     }
 
     fn save(&self) {
@@ -271,7 +266,7 @@ impl ChunkGenerationPhase {
             Self::GenerateStructures => NeighborRequirement { radius: 1, diagonal: true },
             // Only the chunks touching this one are needed to cull faces
             Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: false },
-            Self::Done => NeighborRequirement { radius: 1, diagonal: false },
+            Self::Done => NeighborRequirement::NONE,
         }
     }
 }
@@ -560,8 +555,14 @@ impl VoxelWorld {
     }
 
     fn notify_neighbors(&self, commands: &mut Commands, coord: ChunkCoord) {
-        for (dx, dz) in CHUNK_NEIGHBORS {
-            self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                if dx == 0 && dz == 0 {
+                    continue;
+                }
+
+                self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
+            }
         }
     }
 }
