@@ -86,7 +86,7 @@ impl VoxelType {
         matches!(self, VoxelType::Air)
     }
 
-    fn is_solid(&self) -> bool {
+    fn is_solid(self) -> bool {
         !matches!(self, VoxelType::Air)
     }
 
@@ -207,7 +207,7 @@ impl VoxelWorld {
 
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
-            .is_some_and(|voxel| voxel.is_solid())
+            .is_some_and(VoxelType::is_solid)
     }
 
     /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
@@ -470,7 +470,11 @@ fn poll_mesh_tasks(
 }
 
 /// Builds the mesh from owned data only, so it can run on another thread.
-fn build_mesh(chunk: &ChunkData, neighbors: &ChunkNeighbors, atlas: &TextureAtlasLayout) -> Mesh {
+fn build_mesh(
+    chunk: &ChunkData,
+    neighbors: &ChunkNeighbors,
+    atlas: &TextureAtlasLayout,
+) -> Mesh {
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()

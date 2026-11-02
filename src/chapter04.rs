@@ -52,6 +52,7 @@ impl VoxelType {
     }
 }
 
+#[derive(Clone)]
 pub struct ChunkData {
     _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
@@ -219,8 +220,11 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (player_look, player_move)
-                .run_if(is_focused),
+            (
+                player_look,
+                player_move,
+            )
+            .run_if(is_focused),
         ))
         .run()
 }

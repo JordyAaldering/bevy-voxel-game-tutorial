@@ -93,6 +93,7 @@ impl TextureAtlas {
     }
 }
 
+#[derive(Clone)]
 pub struct ChunkData {
     _coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
@@ -274,8 +275,11 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (player_look, player_move)
-                .run_if(is_focused),
+            (
+                player_look,
+                player_move,
+            )
+            .run_if(is_focused),
         ))
         .run()
 }
@@ -362,7 +366,11 @@ fn generate_chunk(coord: ChunkCoord) -> ChunkData {
     chunk
 }
 
-fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
+fn build_mesh(
+    chunk: &ChunkData,
+    chunk_pos: ChunkCoord,
+    world: &VoxelWorld,
+) -> Mesh {
     let atlas = TextureAtlas { width: 9, height: 10 };
     let mut mesh_data = MeshData::new(atlas);
 

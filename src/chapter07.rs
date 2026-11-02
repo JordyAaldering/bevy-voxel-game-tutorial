@@ -79,7 +79,7 @@ impl VoxelType {
         matches!(self, VoxelType::Air)
     }
 
-    fn is_solid(&self) -> bool {
+    fn is_solid(self) -> bool {
         !matches!(self, VoxelType::Air)
     }
 
@@ -168,7 +168,7 @@ impl VoxelWorld {
 
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
-            .is_some_and(|voxel| voxel.is_solid())
+            .is_some_and(VoxelType::is_solid)
     }
 
     fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
@@ -314,7 +314,12 @@ fn generate_chunk(coord: ChunkCoord) -> ChunkData {
     chunk
 }
 
-fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+fn build_mesh(
+    chunk: &ChunkData,
+    chunk_pos: ChunkCoord,
+    world: &VoxelWorld,
+    atlas: &TextureAtlasLayout,
+) -> Mesh {
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
@@ -349,8 +354,8 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 
     let neighbor_pos = match compass {
         Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
-        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
-        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Back  => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
         Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 

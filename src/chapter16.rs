@@ -229,7 +229,7 @@ impl VoxelType {
         matches!(self, VoxelType::Air)
     }
 
-    fn is_solid(&self) -> bool {
+    fn is_solid(self) -> bool {
         !matches!(self, VoxelType::Air)
     }
 }
@@ -433,7 +433,7 @@ impl VoxelWorld {
 
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
-            .is_some_and(|voxel| voxel.is_solid())
+            .is_some_and(VoxelType::is_solid)
     }
 
     fn is_loaded(&self, coord: ChunkCoord) -> bool {
