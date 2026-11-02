@@ -353,6 +353,7 @@ fn spawn_player(mut commands: Commands) {
                 ..default()
             }),
             Msaa::Off,
+            InheritedVisibility::default(),
             Transform::from_xyz(0.5, 5.0, 0.5),
         ))
         .with_children(|commands| {

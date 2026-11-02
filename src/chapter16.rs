@@ -677,8 +677,13 @@ fn spawn_player(
     commands.spawn((
             Name::new("Player"),
             Player { velocity, ..default() },
-            Transform { translation: position, rotation, ..default() },
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
             InheritedVisibility::default(),
+            Transform { translation: position, rotation, ..default() },
         ))
         .with_children(|commands| {
             commands.spawn((

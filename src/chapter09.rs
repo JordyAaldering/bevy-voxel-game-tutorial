@@ -352,6 +352,12 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
             Name::new("Player"),
             Player::default(),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
+            InheritedVisibility::default(),
             Transform::from_xyz(0.5, world_height as f32 + 1.0, 0.5),
         ))
         .with_children(|commands| {

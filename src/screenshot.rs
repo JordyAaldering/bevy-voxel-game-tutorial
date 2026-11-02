@@ -21,7 +21,7 @@ pub struct ScreenshotPlugin {
     pub gif_tmp_dir: PathBuf,
     #[default("docs/img".into())]
     pub gif_out_dir: PathBuf,
-    #[default(10.0)]
+    #[default(15.0)]
     pub gif_fps: f32,
 }
 
@@ -49,6 +49,7 @@ impl Plugin for ScreenshotPlugin {
                 gif_out_dir: self.gif_out_dir.clone(),
                 gif_fps: self.gif_fps,
             })
+            .init_state::<GifRecordingState>()
             .add_systems(Update, (
                 take_screenshot,
                 start_gif_recording,
@@ -62,7 +63,7 @@ impl Plugin for ScreenshotPlugin {
     }
 }
 
-/// Captures the whole window, including egui and the dock, when F12 is pressed.
+/// Captures the whole window, including egui and the dock.
 fn take_screenshot(
     keys: Res<ButtonInput<KeyCode>>,
     config: Res<ScreenshotConfig>,
@@ -76,7 +77,6 @@ fn take_screenshot(
 
     let secs = get_system_seconds();
     let path = config.screenshot_dir.join(format!("screenshot_{secs}.png"));
-    info!("Saving screenshot to {}", path.display());
 
     commands
         .spawn(Screenshot::primary_window())
@@ -85,14 +85,14 @@ fn take_screenshot(
     Ok(())
 }
 
+/// Start or stop GIF recording.
 fn start_gif_recording(
     config: Res<ScreenshotConfig>,
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<GifRecordingState>>,
     mut next_state: ResMut<NextState<GifRecordingState>>,
 ) -> Result<(), BevyError> {
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    if !(shift && keys.just_pressed(KeyCode::F12)) {
+    if !keys.just_pressed(KeyCode::F11) {
         return Ok(());
     }
 
@@ -113,13 +113,13 @@ fn start_gif_recording(
     Ok(())
 }
 
+/// When in the recording state, capture a frame and save it to a temporary directory.
 fn capture_gif_frame(
     config: Res<ScreenshotConfig>,
     mut commands: Commands,
     mut counter: Local<u32>,
 ) -> Result<(), BevyError> {
-    let path = config.screenshot_dir.join(format!("frame_{:.06}.png", *counter));
-    info!("Saving frame to {}", path.display());
+    let path = config.gif_tmp_dir.join(format!("frame_{:06}.png", *counter));
 
     commands
         .spawn(Screenshot::primary_window())
@@ -129,13 +129,14 @@ fn capture_gif_frame(
     Ok(())
 }
 
+/// When entering the processing state, read all the frames from the temporary directory and encode them into a GIF.
+/// Because this runs in the main thread, it will block the game for a few seconds while the GIF is being encoded.
 fn process_gif(
     config: Res<ScreenshotConfig>,
     mut next_state: ResMut<NextState<GifRecordingState>>,
 ) -> Result<(), BevyError> {
     let mut frames = Vec::new();
-    for file in fs::read_dir(&config.gif_tmp_dir)?
-    {
+    for file in fs::read_dir(&config.gif_tmp_dir)? {
         frames.push(file?.path())
     }
 
@@ -152,16 +153,14 @@ fn process_gif(
     let path = config.gif_out_dir.join(format!("output_{secs}.gif"));
     let file = File::create(&path)?;
 
+    let delay = (100.0 / config.gif_fps).round() as u16;
     let mut encoder = Encoder::new(
         BufWriter::new(file),
         width,
         height,
         &[],
     )?;
-
     encoder.set_repeat(Repeat::Infinite)?;
-
-    let delay = (100.0 / config.gif_fps).round() as u16;
 
     for path in frames {
         let mut image = image::open(&path)?
@@ -173,10 +172,19 @@ fn process_gif(
             ));
         }
 
-        let mut frame = Frame::from_rgba_speed(width, height, image.as_mut(), 10);
+        let mut frame = Frame::from_rgba_speed(
+            width,
+            height,
+            image.as_mut(),
+            10,
+        );
         frame.delay = delay;
         encoder.write_frame(&frame)?;
     }
+
+    // Remove the temporary directory
+    fs::remove_dir_all(&config.gif_tmp_dir)
+        .context(format!("Failed to remove {}", config.gif_tmp_dir.display()))?;
 
     next_state.set(GifRecordingState::Available);
     Ok(())

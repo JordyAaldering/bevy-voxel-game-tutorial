@@ -1,5 +1,7 @@
 # Creating a player character
 
+![](img/chapter07.gif)
+
 Adding a first person player, and especially the necessary physics, might seem daunting.
 But it turns out that this is not actually as scary as it sounds in our simple voxel world.
 
