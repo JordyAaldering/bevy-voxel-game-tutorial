@@ -80,6 +80,7 @@ impl Default for NoiseSettings {
 
 impl NoiseSettings {
     /// Samples fractal noise at the given world position.
+    #[allow(unused)]
     pub fn sample2(&self, seed: i64, x: f32, z: f32) -> f32 {
         let x = x + self.offset.x;
         let z = z + self.offset.y;
@@ -105,6 +106,7 @@ impl NoiseSettings {
         }
     }
 
+    #[allow(unused)]
     pub fn sample3(&self, seed: i64, x: f32, y: f32, z: f32) -> f32 {
         let x = x + self.offset.x;
         let z = z + self.offset.y;

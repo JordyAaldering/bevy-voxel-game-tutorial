@@ -70,6 +70,7 @@ pub struct VoxelAtlas {
 
 impl VoxelAtlas {
     /// `variant_seed` picks one of the voxel's variants; the same seed always gives the same variant.
+    #[allow(unused)]
     pub fn texture(&self, voxel: VoxelType, direction: Direction, variant_seed: u32) -> usize {
         let variants = &self.faces[voxel as usize];
         variants[variant_seed as usize % variants.len()][direction as usize]

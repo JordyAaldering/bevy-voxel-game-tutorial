@@ -1,17 +1,20 @@
 mod coords;
 mod editor;
 mod meshdata;
-mod opensimplex2s;
+mod noise;
 mod physics;
 mod raycast;
+mod screenshot;
 mod telemetry;
 
 use crate::{
     coords::*,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
+    noise::NoiseSettings,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
+    screenshot::ScreenshotPlugin,
     telemetry::{Telemetry, TelemetryPublisher},
 };
 
@@ -41,7 +44,6 @@ const CHUNK_LOAD_RADIUS: i32 = 2;
 
 const ATLAS_ROWS: u32 = 4;
 const ATLAS_COLUMNS: u32 = 4;
-const ATLAS_SIZE: u32 = ATLAS_COLUMNS * ATLAS_ROWS;
 
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
@@ -50,6 +52,26 @@ const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
+
+#[derive(Resource)]
+struct TerrainConfig {
+    seed: i64,
+    height: NoiseSettings,
+}
+
+impl Default for TerrainConfig {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            height: NoiseSettings {
+                amplitude: 10.0,
+                frequency: 0.01,
+                bias: 20.0,
+                ..default()
+            },
+        }
+    }
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
@@ -494,11 +516,13 @@ fn main() -> AppExit {
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
-            PhysicsPlugin,
+            ScreenshotPlugin::default(),
+            PhysicsPlugin::new(is_gamemode_survival),
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
+        .init_resource::<TerrainConfig>()
         .insert_resource(CameraSettings::load())
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
@@ -555,8 +579,9 @@ fn spawn_global_illumination(mut commands: Commands) {
 fn spawn_player(
     mut commands: Commands,
     editor_state: Res<EditorState>,
+    config: Res<TerrainConfig>,
 ) {
-    let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
+    let world_height = terrain_height(&config, 0, 0) as f32 + 1.0;
     let save = WorldSave::load();
     let position = save
         .as_ref()
@@ -605,7 +630,7 @@ fn setup_chunk_material(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.insert_resource(VoxelAtlas(TextureAtlasLayout::from_grid(
-        UVec2::splat(ATLAS_SIZE),
+        UVec2::splat(ATLAS_COLUMNS * ATLAS_ROWS),
         ATLAS_COLUMNS,
         ATLAS_ROWS,
         None,
@@ -646,15 +671,19 @@ fn spawn_chunks_around_player(
     }
 }
 
-fn generate_chunk_height(chunk: &mut ChunkData) {
+fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
+    let height = config.height.sample2(config.seed, world_x as f32, world_z as f32) as i32;
+    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
+}
+
+fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
         for z in 0..CHUNK_WIDTH {
             let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-            let height = (opensimplex2s::noise2d(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
-            let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+            let height = terrain_height(config, world_x, world_z);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
@@ -716,6 +745,7 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 fn on_chunk_data_changed(
     event: On<ChunkDataChanged>,
     chunks: Query<&Chunk>,
+    config: Res<TerrainConfig>,
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
 ) {
@@ -740,7 +770,7 @@ fn on_chunk_data_changed(
     match phase {
         ChunkGenerationPhase::HeightGeneration => {
             info!("Generating height data for chunk {}", coord);
-            generate_chunk_height(&mut world[&chunk]);
+            generate_chunk_height(&mut world[&chunk], &config);
             world.notify_neighbors(&mut commands, coord);
 
             let data = &mut world[&chunk];

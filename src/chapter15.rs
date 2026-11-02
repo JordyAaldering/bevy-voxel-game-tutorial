@@ -4,6 +4,7 @@ mod meshdata;
 mod noise;
 mod physics;
 mod raycast;
+mod screenshot;
 mod telemetry;
 mod voxel_atlas;
 
@@ -14,6 +15,7 @@ use crate::{
     noise::NoiseSettings,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
+    screenshot::ScreenshotPlugin,
     telemetry::{Telemetry, TelemetryPublisher},
     voxel_atlas::{VoxelAtlas, build_voxel_atlas},
 };
@@ -143,9 +145,11 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, SchemaWrite, SchemaRead)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -533,7 +537,8 @@ fn main() -> AppExit {
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
-            PhysicsPlugin,
+            ScreenshotPlugin::default(),
+            PhysicsPlugin::new(is_gamemode_survival),
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
@@ -602,7 +607,7 @@ fn spawn_player(
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
         .unwrap_or_else(|| {
-            let world_height = config.height.sample(config.seed, 0.0, 0.0);
+            let world_height = terrain_height(&config, 0, 0) as f32 + 1.0;
             Vec3::new(1.5, world_height as f32 + 1.0, 1.5)
         });
     let rotation = save
@@ -684,6 +689,11 @@ fn spawn_chunks_around_player(
     }
 }
 
+fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
+    let height = config.height.sample2(config.seed, world_x as f32, world_z as f32) as i32;
+    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
+}
+
 fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
@@ -691,8 +701,7 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
         for z in 0..CHUNK_WIDTH {
             let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-            let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
-            let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+            let height = terrain_height(config, world_x, world_z);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
@@ -766,9 +775,9 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 fn on_chunk_data_changed(
     event: On<ChunkDataChanged>,
     chunks: Query<&Chunk>,
+    config: Res<TerrainConfig>,
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
-    config: Res<TerrainConfig>,
 ) {
     // May be None if the chunk was despawned before the event was processed
     let Ok(chunk) = chunks.get(event.entity) else {

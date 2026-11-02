@@ -173,10 +173,11 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SchemaWrite, SchemaRead)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -589,7 +590,7 @@ fn main() -> AppExit {
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
-            PhysicsPlugin,
+            PhysicsPlugin::new(is_gamemode_survival),
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
@@ -659,7 +660,7 @@ fn spawn_player(
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
         .unwrap_or_else(|| {
-            let world_height = config.height.sample(config.seed, 0.0, 0.0);
+            let world_height = terrain_height(&config, 0, 0) as f32 + 1.0;
             Vec3::new(1.5, world_height as f32 + 1.0, 1.5)
         });
     let rotation = save
@@ -741,9 +742,8 @@ fn spawn_chunks_around_player(
     }
 }
 
-/// Height of the top-most (grass) voxel at the given world column.
 fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
-    let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
+    let height = config.height.sample2(config.seed, world_x as f32, world_z as f32) as i32;
     (height as usize).clamp(0, CHUNK_HEIGHT - 1)
 }
 
@@ -846,10 +846,10 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
 fn on_chunk_data_changed(
     event: On<ChunkDataChanged>,
     chunks: Query<&Chunk>,
-    mut world: ResMut<VoxelWorld>,
-    mut commands: Commands,
     config: Res<TerrainConfig>,
     structures: Res<Structures>,
+    mut world: ResMut<VoxelWorld>,
+    mut commands: Commands,
 ) {
     // May be None if the chunk was despawned before the event was processed
     let Ok(chunk) = chunks.get(event.entity) else {

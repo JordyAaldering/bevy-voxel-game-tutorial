@@ -157,10 +157,11 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SchemaWrite, SchemaRead)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,

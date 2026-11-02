@@ -1,4 +1,4 @@
-use crate::{VoxelType, physics::Aabb, coords::{Direction, WorldCoord}};
+use crate::{VoxelType, coords::{Aabb, Direction, WorldCoord}};
 
 /// Set a coordinate to air to require that space to be cleared by the structure,
 /// otherwise if there happens to be any voxels already at that position it remains.
@@ -16,6 +16,7 @@ pub struct Structure {
 
 impl Structure {
     /// Bounding box of this structure.
+    #[allow(unused)]
     pub fn aabb(&self) -> Aabb {
         let mut min = WorldCoord::ZERO;
         let mut max = WorldCoord::ZERO;

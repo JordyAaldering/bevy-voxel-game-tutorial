@@ -2,11 +2,75 @@
 name = "voxel"
 version = "0.1.0"
 edition = "2024"
-default-run = "main"
+default-run = "chapter17"
 
 [[bin]]
-name = "main"
+name = "chapter17"
+path = "src/chapter17.rs"
+
+[[bin]]
+name = "chapter16"
+path = "src/chapter16.rs"
+
+[[bin]]
+name = "chapter15"
+path = "src/chapter15.rs"
+
+[[bin]]
+name = "chapter14"
+path = "src/chapter14.rs"
+
+[[bin]]
+name = "chapter13"
+path = "src/chapter13.rs"
+
+[[bin]]
+name = "chapter12"
+path = "src/chapter12.rs"
+
+[[bin]]
+name = "chapter11"
+path = "src/chapter11.rs"
+
+[[bin]]
+name = "chapter10"
+path = "src/chapter10.rs"
+
+[[bin]]
+name = "chapter09"
+path = "src/chapter09.rs"
+
+[[bin]]
+name = "chapter08"
+path = "src/chapter08.rs"
+
+[[bin]]
+name = "chapter07"
 path = "src/chapter07.rs"
+
+[[bin]]
+name = "chapter06"
+path = "src/chapter06.rs"
+
+[[bin]]
+name = "chapter05"
+path = "src/chapter05.rs"
+
+[[bin]]
+name = "chapter04"
+path = "src/chapter04.rs"
+
+[[bin]]
+name = "chapter03"
+path = "src/chapter03.rs"
+
+[[bin]]
+name = "chapter02"
+path = "src/chapter02.rs"
+
+[[bin]]
+name = "chapter01"
+path = "src/chapter01.rs"
 
 [[bin]]
 name = "noise_viewer"

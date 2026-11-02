@@ -2,14 +2,16 @@ mod chunk_neighbors;
 mod coords;
 mod meshdata;
 mod noise;
+mod physics;
 mod raycast;
 mod screenshot;
 
 use crate::{
-    axis::Axis,
     chunk_neighbors::ChunkNeighbors,
     coords::*,
     meshdata::MeshData,
+    noise::NoiseSettings,
+    physics::PhysicsPlugin,
     raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
 };
@@ -38,19 +40,31 @@ const CHUNK_HEIGHT: usize = 64;
 
 const ATLAS_ROWS: u32 = 4;
 const ATLAS_COLUMNS: u32 = 4;
-const ATLAS_SIZE: u32 = ATLAS_COLUMNS * ATLAS_ROWS;
 
-/// Prevents exact boundary contact from being treated as an overlap with the adjacent voxel.
-const COLLISION_EPSILON: f32 = 1e-3;
-
-const PLAYER_WIDTH: f32 = 0.6;
-const PLAYER_WIDTH_HALF: f32 = PLAYER_WIDTH * 0.5;
-const PLAYER_HEIGHT: f32 = 1.8;
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
-const GRAVITY: f32 = 20.0;
 
 const INTERACTION_DISTANCE: f32 = 5.0;
+
+#[derive(Resource)]
+struct TerrainConfig {
+    seed: i64,
+    height: NoiseSettings,
+}
+
+impl Default for TerrainConfig {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            height: NoiseSettings {
+                amplitude: 10.0,
+                frequency: 0.01,
+                bias: 20.0,
+                ..default()
+            },
+        }
+    }
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
@@ -206,7 +220,12 @@ impl VoxelWorld {
 
     /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
     /// if it does not exist yet, so earlier modifications survive unloading.
-    fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
+    fn spawn_chunk(
+        &mut self,
+        commands: &mut Commands,
+        config: &TerrainConfig,
+        coord: ChunkCoord,
+    ) -> Entity {
         let entity = commands.spawn((
             Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
             Transform::from_translation(coord.position()),
@@ -218,7 +237,7 @@ impl VoxelWorld {
             Arc::make_mut(chunk).set_entity(entity);
         } else {
             let mut chunk = ChunkData::new(coord, entity);
-            generate_chunk(&mut chunk);
+            generate_chunk(&mut chunk, &config);
             self.chunks.insert(coord, Arc::new(chunk));
         }
 
@@ -299,9 +318,11 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            PhysicsPlugin::new(is_gamemode_survival),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
+        .init_resource::<TerrainConfig>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_systems(Startup, (
@@ -325,10 +346,6 @@ fn main() -> AppExit {
             poll_mesh_tasks,
             remesh_chunks,
         ).chain())
-        .add_systems(FixedUpdate, (
-            player_physics
-                .run_if(is_gamemode_survival),
-        ))
         .run()
 }
 
@@ -346,8 +363,11 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_player(mut commands: Commands) {
-    let world_height = noise::opensimplex2s::noise2(0, 0.0, 0.0) * 10.0 + 20.0;
+fn spawn_player(
+    mut commands: Commands,
+    config: Res<TerrainConfig>,
+) {
+    let world_height = terrain_height(&config, 0, 0) as f32 + 1.0;
 
     commands.spawn((
             Name::new("Player"),
@@ -374,9 +394,10 @@ fn spawn_world(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut world: ResMut<VoxelWorld>,
     asset_server: Res<AssetServer>,
+    config: Res<TerrainConfig>,
 ) {
     commands.insert_resource(VoxelAtlas(TextureAtlasLayout::from_grid(
-        UVec2::splat(ATLAS_SIZE),
+        UVec2::splat(ATLAS_COLUMNS * ATLAS_ROWS),
         ATLAS_COLUMNS,
         ATLAS_ROWS,
         None,
@@ -397,21 +418,25 @@ fn spawn_world(
     for z in -1..=1 {
         for x in -1..=1 {
             let coord = ChunkCoord::new(x, z);
-            let entity = world.spawn_chunk(&mut commands, coord);
+            let entity = world.spawn_chunk(&mut commands, &config, coord);
             commands.entity(entity).insert(MeshMaterial3d(material.clone()));
         }
     }
 }
 
-fn generate_chunk(chunk: &mut ChunkData) {
+fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
+    let height = config.height.sample2(config.seed, world_x as f32, world_z as f32) as i32;
+    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
+}
+
+fn generate_chunk(chunk: &mut ChunkData, config: &TerrainConfig) {
     for z in 0..CHUNK_WIDTH {
         let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
         for x in 0..CHUNK_WIDTH {
             let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
-            let height = (noise::opensimplex2s::noise2(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
-            let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+            let height = terrain_height(config, world_x, world_z);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
@@ -643,107 +668,6 @@ fn move_survival(
     if player.grounded && keyboard.just_pressed(KeyCode::Space) {
         player.velocity.y = settings.jump_strenght;
         player.grounded = false;
-    }
-}
-
-fn player_physics(
-    time: Res<Time>,
-    world: Res<VoxelWorld>,
-    player: Single<(&mut Player, &mut Transform)>,
-) {
-    let (mut player, mut transform) = player.into_inner();
-    let dt = time.delta_secs();
-
-    player.velocity.y -= GRAVITY * dt;
-    player.grounded = false;
-
-    for axis in [Axis::X, Axis::Y, Axis::Z] {
-        move_axis(
-            &mut player,
-            &mut transform.translation,
-            &world,
-            dt,
-            axis,
-        );
-    }
-}
-
-fn move_axis(
-    player: &mut Player,
-    position: &mut Vec3,
-    world: &VoxelWorld,
-    dt: f32,
-    axis: Axis,
-) {
-    let velocity = Axis::get(axis, player.velocity);
-
-    if velocity == 0.0 {
-        return;
-    }
-
-    let axis_position = Axis::get(axis, *position) + velocity * dt;
-    Axis::set(axis, position, axis_position);
-
-    let min = Vec3::new(
-        position.x - PLAYER_WIDTH_HALF,
-        position.y,
-        position.z - PLAYER_WIDTH_HALF,
-    );
-    let max = Vec3::new(
-        position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
-        position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
-        position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
-    );
-
-    let min_x = min.x.floor() as i32;
-    let max_x = max.x.floor() as i32;
-    let min_y = min.y.floor() as i32;
-    let max_y = max.y.floor() as i32;
-    let min_z = min.z.floor() as i32;
-    let max_z = max.z.floor() as i32;
-
-    // Find the voxel coordinate of the leading face
-    let edge = match (axis, velocity > 0.0) {
-        (Axis::X, true)  => position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
-        (Axis::X, false) => position.x - PLAYER_WIDTH_HALF,
-        (Axis::Y, true)  => position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
-        (Axis::Y, false) => position.y,
-        (Axis::Z, true)  => position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
-        (Axis::Z, false) => position.z - PLAYER_WIDTH_HALF,
-    };
-
-    let edge = edge.floor() as i32;
-
-    let (x_range, y_range, z_range) = match axis {
-        Axis::X => (edge..=edge,   min_y..=max_y, min_z..=max_z),
-        Axis::Y => (min_x..=max_x, edge..=edge,   min_z..=max_z),
-        Axis::Z => (min_x..=max_x, min_y..=max_y, edge..=edge),
-    };
-
-    for z in z_range {
-        for y in y_range.clone() {
-            for x in x_range.clone() {
-                if !world.is_solid(WorldCoord::new(x, y, z)) {
-                    continue;
-                }
-
-                let resolved = match (axis, velocity > 0.0) {
-                    (Axis::X, true)  => x as f32 - PLAYER_WIDTH_HALF,
-                    (Axis::X, false) => x as f32 + 1.0 + PLAYER_WIDTH_HALF,
-                    (Axis::Y, true)  => y as f32 - PLAYER_HEIGHT,
-                    (Axis::Y, false) => {
-                        player.grounded = true;
-                        y as f32 + 1.0
-                    }
-                    (Axis::Z, true)  => z as f32 - PLAYER_WIDTH_HALF,
-                    (Axis::Z, false) => z as f32 + 1.0 + PLAYER_WIDTH_HALF,
-                };
-
-                Axis::set(axis, position, resolved);
-                Axis::set(axis, &mut player.velocity, 0.0);
-                return;
-            }
-        }
     }
 }
 

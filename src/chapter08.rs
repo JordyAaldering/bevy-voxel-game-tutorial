@@ -300,7 +300,7 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
-            PhysicsPlugin,
+            PhysicsPlugin::new(is_gamemode_survival),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
