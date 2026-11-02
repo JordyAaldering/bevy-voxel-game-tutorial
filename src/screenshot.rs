@@ -16,20 +16,14 @@ use gif::{Encoder, Frame, Repeat};
 #[derive(Default)]
 pub struct ScreenshotPlugin {
     #[default("docs/img".into())]
-    pub screenshot_dir: PathBuf,
-    #[default("docs/img/tmp".into())]
-    pub gif_tmp_dir: PathBuf,
-    #[default("docs/img".into())]
-    pub gif_out_dir: PathBuf,
+    pub out_dir: PathBuf,
     #[default(15.0)]
     pub gif_fps: f32,
 }
 
 #[derive(Resource)]
 struct ScreenshotConfig {
-    screenshot_dir: PathBuf,
-    gif_tmp_dir: PathBuf,
-    gif_out_dir: PathBuf,
+    out_dir: PathBuf,
     gif_fps: f32,
 }
 
@@ -44,9 +38,7 @@ enum GifRecordingState {
 impl Plugin for ScreenshotPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ScreenshotConfig {
-                screenshot_dir: self.screenshot_dir.clone(),
-                gif_tmp_dir: self.gif_tmp_dir.clone(),
-                gif_out_dir: self.gif_out_dir.clone(),
+                out_dir: self.out_dir.clone(),
                 gif_fps: self.gif_fps,
             })
             .init_state::<GifRecordingState>()
@@ -73,10 +65,10 @@ fn take_screenshot(
         return Ok(());
     }
 
-    fs::create_dir_all(&config.screenshot_dir)?;
+    fs::create_dir_all(&config.out_dir)?;
 
     let secs = get_system_seconds();
-    let path = config.screenshot_dir.join(format!("screenshot_{secs}.png"));
+    let path = config.out_dir.join(format!("screenshot_{secs}.png"));
 
     commands
         .spawn(Screenshot::primary_window())
@@ -98,13 +90,14 @@ fn start_gif_recording(
 
     next_state.set(match state.get() {
         GifRecordingState::Available => {
-            fs::create_dir_all(&config.gif_tmp_dir)
-                .context(format!("Failed to create {}", config.gif_tmp_dir.display()))?;
+            let tmp_dir = config.out_dir.join("tmp");
+            fs::create_dir_all(&tmp_dir)
+                .context(format!("Failed to create {}", tmp_dir.display()))?;
             GifRecordingState::Recording
         },
         GifRecordingState::Recording => {
-            fs::create_dir_all(&config.gif_out_dir)
-                .context(format!("Failed to create {}", config.gif_out_dir.display()))?;
+            fs::create_dir_all(&config.out_dir)
+                .context(format!("Failed to create {}", config.out_dir.display()))?;
             GifRecordingState::Processing
         }
         GifRecordingState::Processing => GifRecordingState::Processing,
@@ -119,7 +112,8 @@ fn capture_gif_frame(
     mut commands: Commands,
     mut counter: Local<u32>,
 ) -> Result<(), BevyError> {
-    let path = config.gif_tmp_dir.join(format!("frame_{:06}.png", *counter));
+    let tmp_dir = config.out_dir.join("tmp");
+    let path = tmp_dir.join(format!("frame_{:06}.png", *counter));
 
     commands
         .spawn(Screenshot::primary_window())
@@ -136,21 +130,22 @@ fn process_gif(
     mut next_state: ResMut<NextState<GifRecordingState>>,
 ) -> Result<(), BevyError> {
     let mut frames = Vec::new();
-    for file in fs::read_dir(&config.gif_tmp_dir)? {
+    let tmp_dir = config.out_dir.join("tmp");
+    for file in fs::read_dir(&tmp_dir)? {
         frames.push(file?.path())
     }
 
     frames.sort();
 
     let first = frames.first()
-        .context(format!("No frames found in {}", config.gif_tmp_dir.display()))?;
+        .context(format!("No frames found in {}", tmp_dir.display()))?;
     let first_image = image::open(first)?;
 
     let width = u16::try_from(first_image.width())?;
     let height = u16::try_from(first_image.height())?;
 
     let secs = get_system_seconds();
-    let path = config.gif_out_dir.join(format!("output_{secs}.gif"));
+    let path = config.out_dir.join(format!("output_{secs}.gif"));
     let file = File::create(&path)?;
 
     let delay = (100.0 / config.gif_fps).round() as u16;
@@ -183,8 +178,8 @@ fn process_gif(
     }
 
     // Remove the temporary directory
-    fs::remove_dir_all(&config.gif_tmp_dir)
-        .context(format!("Failed to remove {}", config.gif_tmp_dir.display()))?;
+    fs::remove_dir_all(&tmp_dir)
+        .context(format!("Failed to remove {}", tmp_dir.display()))?;
 
     next_state.set(GifRecordingState::Available);
     Ok(())
