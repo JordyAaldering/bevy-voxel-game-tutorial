@@ -21,7 +21,7 @@ pub struct TelemetryPlugin;
 
 // Resource used by Bevy to publish the latest snapshot.
 #[derive(Resource)]
-struct TelemetryPublisher(pub watch::Sender<Telemetry>);
+struct TelemetryPublisher(watch::Sender<Telemetry>);
 
 #[derive(Clone, Debug, Default, Serialize)]
 struct Telemetry {

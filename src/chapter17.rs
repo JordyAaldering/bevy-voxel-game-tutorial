@@ -39,8 +39,6 @@ use bevy_inspector_egui::{
     prelude::*,
     bevy_egui::prelude::*,
 };
-use serde::{Deserialize, Serialize};
-use wincode::{SchemaRead, SchemaWrite};
 
 const CHUNK_WIDTH: usize = 32;
 const CHUNK_HEIGHT: usize = 64;
@@ -102,7 +100,8 @@ struct PlayerCamera;
 #[derive(Component)]
 struct EditorCamera;
 
-#[derive(Default, Resource, Reflect, InspectorOptions, Serialize, Deserialize)]
+#[derive(Default, Resource, Reflect, InspectorOptions)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[reflect(Resource, InspectorOptions)]
 #[serde(default)]
 struct CameraSettings {
@@ -239,7 +238,8 @@ struct ChunkDataChanged {
     entity: Entity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, SchemaWrite, SchemaRead)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 enum ChunkGenerationPhase {
     HeightGeneration,
     OreGeneration,
@@ -296,7 +296,7 @@ impl NeighborRequirement {
     }
 }
 
-#[derive(SchemaWrite, SchemaRead)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
@@ -403,7 +403,7 @@ struct VoxelWorld {
 }
 
 /// Global world state, stored in `world.bin`.
-#[derive(SchemaWrite, SchemaRead)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 struct WorldSave {
     player_position: [f32; 3],
     player_rotation: [f32; 4],

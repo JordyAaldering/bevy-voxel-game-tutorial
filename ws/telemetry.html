@@ -33,11 +33,11 @@
   <div class="cards">
     <div class="card">
       <div class="label">FPS</div>
-      <div class="value" id="fps">—</div>
+      <div class="value" id="frame_rate">—</div>
     </div>
     <div class="card">
       <div class="label">Frame time</div>
-      <div class="value" id="frame">—</div>
+      <div class="value" id="frame_time">—</div>
       <div class="label">milliseconds</div>
     </div>
     <div class="card">
@@ -61,11 +61,11 @@
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        document.querySelector("#fps").textContent =
-          data.fps?.toFixed(1) ?? "—";
+        document.querySelector("#frame_rate").textContent =
+          data.frame_rate?.toFixed(1) ?? "—";
 
-        document.querySelector("#frame").textContent =
-          data.frame_time_ms?.toFixed(2) ?? "—";
+        document.querySelector("#frame_time").textContent =
+          data.frame_time?.toFixed(2) ?? "—";
 
         document.querySelector("#entities").textContent =
           data.entity_count?.toFixed(0) ?? "—";
