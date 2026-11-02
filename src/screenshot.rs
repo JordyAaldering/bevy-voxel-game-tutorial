@@ -1,14 +1,17 @@
 use std::{
-    fs::{self, File}, io::BufWriter, path::PathBuf, time::{Duration, SystemTime, UNIX_EPOCH},
+    fs::{self, File},
+    io::BufWriter,
+    path::PathBuf,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use better_default::Default;
 use bevy::{
-    prelude::*, render::view::screenshot::{Screenshot, save_to_disk}, time::common_conditions::on_timer,
+    prelude::*,
+    render::view::screenshot::{Screenshot, save_to_disk},
+    time::common_conditions::on_timer,
 };
 use gif::{Encoder, Frame, Repeat};
-
-const GIF_FPS: f32 = 10.0;
 
 #[derive(Default)]
 pub struct ScreenshotPlugin {
@@ -18,6 +21,8 @@ pub struct ScreenshotPlugin {
     pub gif_tmp_dir: PathBuf,
     #[default("docs/img".into())]
     pub gif_out_dir: PathBuf,
+    #[default(10.0)]
+    pub gif_fps: f32,
 }
 
 #[derive(Resource)]
@@ -25,6 +30,7 @@ struct ScreenshotConfig {
     screenshot_dir: PathBuf,
     gif_tmp_dir: PathBuf,
     gif_out_dir: PathBuf,
+    gif_fps: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, States)]
@@ -41,12 +47,13 @@ impl Plugin for ScreenshotPlugin {
                 screenshot_dir: self.screenshot_dir.clone(),
                 gif_tmp_dir: self.gif_tmp_dir.clone(),
                 gif_out_dir: self.gif_out_dir.clone(),
+                gif_fps: self.gif_fps,
             })
             .add_systems(Update, (
                 take_screenshot,
                 start_gif_recording,
                 capture_gif_frame
-                    .run_if(on_timer(Duration::from_secs_f32(1.0 / GIF_FPS)))
+                    .run_if(on_timer(Duration::from_secs_f32(1.0 / self.gif_fps)))
                     .run_if(in_state(GifRecordingState::Recording)),
             ))
             .add_systems(OnExit(GifRecordingState::Recording),
@@ -154,7 +161,7 @@ fn process_gif(
 
     encoder.set_repeat(Repeat::Infinite)?;
 
-    let delay = (100.0 / GIF_FPS).round() as u16;
+    let delay = (100.0 / config.gif_fps).round() as u16;
 
     for path in frames {
         let mut image = image::open(&path)?
