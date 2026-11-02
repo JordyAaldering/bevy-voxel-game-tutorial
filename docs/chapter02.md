@@ -61,3 +61,9 @@ We need to stop `toggle_cursor` from capturing the mouse when the click is meant
 A quick search leads us to [`EguiWantsInput`](https://docs.rs/bevy_egui/latest/bevy_egui/input/struct.EguiWantsInput.html).
 Read the documentation to see how egui signals that it wants keyboard or pointer input.
 Then, in `toggle_cursor`, only grab the cursor if egui does not want the input.
+
+## Screenshots, GIFs, and states
+
+This chapter is short, perhaps add the screenshotting here.
+It is interesting because it uses state control, which is really useful.
+The chapter title needs to adjust accordingly.
