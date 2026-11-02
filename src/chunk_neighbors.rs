@@ -27,9 +27,9 @@ impl Index<Compass> for ChunkNeighbors {
     fn index(&self, index: Compass) -> &Self::Output {
         match index {
             Compass::Front => &self.north,
-            Compass::Right  => &self.east,
+            Compass::Right => &self.east,
             Compass::Back => &self.south,
-            Compass::Left  => &self.west,
+            Compass::Left => &self.west,
         }
     }
 }

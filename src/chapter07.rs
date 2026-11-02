@@ -356,8 +356,8 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
     let neighbor_pos = match compass {
         Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
         Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
-        Compass::Back  => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Left => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]

@@ -1,3 +1,4 @@
+mod chunk_neighbors;
 mod biome;
 mod coords;
 mod editor;
@@ -13,6 +14,7 @@ mod voxel_atlas;
 
 use crate::{
     biome::WorldConfig,
+    chunk_neighbors::ChunkNeighbors,
     coords::*,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
@@ -24,7 +26,7 @@ use crate::{
     voxel_atlas::{VoxelAtlas, build_voxel_atlas},
 };
 
-use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}};
+use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, sync::Arc};
 
 use better_default::Default;
 use bevy::{
@@ -33,6 +35,7 @@ use bevy::{
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
     input::mouse::AccumulatedMouseMotion,
     platform::collections::HashMap,
+    tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -224,6 +227,10 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 #[derive(Component)]
 struct NeedsRemesh;
 
+/// A mesh that is being built on another thread. Dropping it cancels the task.
+#[derive(Component)]
+struct MeshTask(Task<Mesh>);
+
 #[derive(Component)]
 struct NeedsDespawn;
 
@@ -395,8 +402,12 @@ impl IndexMut<VoxelCoord> for ChunkData {
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    chunks: HashMap<ChunkCoord, ChunkData>,
+    /// Chunk data is shared with meshing tasks. Writes use copy-on-write.
+    chunks: HashMap<ChunkCoord, Arc<ChunkData>>,
 }
+
+#[derive(Resource)]
+struct SharedVoxelAtlas(Arc<VoxelAtlas>);
 
 /// Global world state, stored in `world.bin`.
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
@@ -442,11 +453,11 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 impl VoxelWorld {
     fn add_chunk(&mut self, pos: ChunkCoord, chunk: ChunkData) {
         debug_assert!(!self.chunks.contains_key(&pos));
-        self.chunks.insert(pos, chunk);
+        self.chunks.insert(pos, Arc::new(chunk));
     }
 
     fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
-        self.chunks.get(&pos)
+        self.chunks.get(&pos).map(Arc::as_ref)
     }
 
     fn is_solid(&self, pos: WorldCoord) -> bool {
@@ -468,7 +479,7 @@ impl VoxelWorld {
         )).id();
 
         if let Some(chunk) = self.chunks.get_mut(&coord) {
-            chunk.set_entity(entity);
+            Arc::make_mut(chunk).set_entity(entity);
         } else {
             let chunk = ChunkData::load(coord, entity)
                 .unwrap_or_else(|| ChunkData::new(coord, entity));
@@ -499,7 +510,7 @@ impl VoxelWorld {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
-        chunk[voxel_pos] = voxel;
+        Arc::make_mut(chunk)[voxel_pos] = voxel;
 
         self.notify_chunk(commands, chunk_pos);
 
@@ -518,7 +529,7 @@ impl VoxelWorld {
 
     fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
         let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-        self.chunks.get(&neighbor_pos)
+        self.chunks.get(&neighbor_pos).map(Arc::as_ref)
     }
 
     /// Whether all neighbors required by `phase` have completed the phase before it.
@@ -542,7 +553,7 @@ impl VoxelWorld {
 
             let chunk = self.chunks.get_mut(&coord.chunk_coord())
                 .expect("Structure generation requires all neighboring chunk data");
-            chunk[coord.local_coord()] = voxel.voxel;
+            Arc::make_mut(chunk)[coord.local_coord()] = voxel.voxel;
         }
     }
 
@@ -579,8 +590,10 @@ impl Index<&Chunk> for VoxelWorld {
 
 impl IndexMut<&Chunk> for VoxelWorld {
     fn index_mut(&mut self, chunk: &Chunk) -> &mut Self::Output {
-        self.chunks.get_mut(&chunk.coord)
-            .expect("A chunk entity cannot exist without its data")
+        Arc::make_mut(
+            self.chunks.get_mut(&chunk.coord)
+                .expect("A chunk entity cannot exist without its data"),
+        )
     }
 }
 
@@ -631,6 +644,7 @@ fn main() -> AppExit {
         .add_systems(PostUpdate, (
             (
                 despawn_retired_chunks,
+                poll_mesh_tasks,
                 remesh_chunks,
             ).chain(),
         ))
@@ -715,7 +729,7 @@ fn setup_chunk_material(
     let (atlas, image) = build_voxel_atlas(&mut images)
         .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
     let texture = images.add(image);
-    commands.insert_resource(atlas);
+    commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
@@ -836,14 +850,19 @@ fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &World
     }
 }
 
-fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atlas: &VoxelAtlas) -> Mesh {
+fn build_mesh(
+    chunk: &ChunkData,
+    chunk_pos: ChunkCoord,
+    neighbors: &ChunkNeighbors,
+    atlas: &VoxelAtlas,
+) -> Mesh {
     let mut mesh_data = MeshData::new(atlas.layout());
 
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| *v != VoxelType::Air)
     {
         for direction in Direction::iter() {
-            if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
+            if is_face_visible(neighbors, chunk, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
                 mesh_data.add_quad(direction, origin, texture);
@@ -866,7 +885,12 @@ fn variant_seed(chunk_pos: ChunkCoord, voxel_pos: VoxelCoord) -> u32 {
     h ^ (h >> 13)
 }
 
-fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord, voxel_pos: VoxelCoord, direction: Direction) -> bool {
+fn is_face_visible(
+    neighbors: &ChunkNeighbors,
+    chunk: &ChunkData,
+    voxel_pos: VoxelCoord,
+    direction: Direction,
+) -> bool {
     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
         return neighbor.is_transparent();
     }
@@ -876,15 +900,14 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
         return true;
     };
 
-    // If the chunk does not exist, we assume it is empty and show the face
-    let neighbor_chunk = world.get_chunk(chunk_pos + compass)
+    let neighbor_chunk = neighbors[compass].as_ref()
         .expect("Mesh generation requires all neighboring chunk data");
 
     let neighbor_pos = match compass {
         Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
-        Compass::Right  => VoxelCoord { x: 0, ..voxel_pos },
+        Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
         Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        Compass::Left  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        Compass::Left => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]
@@ -971,14 +994,46 @@ fn on_chunk_data_changed(
     }
 }
 
-fn remesh_chunks(
+fn poll_mesh_tasks(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
-    atlas: Res<VoxelAtlas>,
     mut meshes: ResMut<Assets<Mesh>>,
-    chunks: Query<(Entity, &Chunk, Option<&Mesh3d>), With<NeedsRemesh>>,
+    mut tasks: Query<(Entity, &Chunk, &mut MeshTask, Option<&Mesh3d>)>,
+) -> Result<(), BevyError> {
+    for (entity, chunk, mut task, mesh3d) in &mut tasks {
+        let Some(mesh) = block_on(future::poll_once(&mut task.0)) else {
+            continue;
+        };
+
+        match mesh3d {
+            Some(handle) => {
+                meshes.insert(&handle.0, mesh)?;
+            }
+            None => {
+                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            }
+        }
+
+        commands.entity(entity).remove::<MeshTask>();
+
+        let data = world.chunks.get_mut(&chunk.coord)
+            .expect("A chunk entity cannot exist without its data");
+        let data = Arc::make_mut(data);
+        data.generation_phase = data.generation_phase.next();
+    }
+
+    Ok(())
+}
+
+fn remesh_chunks(
+    mut commands: Commands,
+    world: Res<VoxelWorld>,
+    atlas: Res<SharedVoxelAtlas>,
+    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
 ) {
-    for (entity, chunk, mesh3d) in &chunks {
+    let pool = AsyncComputeTaskPool::get();
+
+    for (entity, chunk) in &chunks {
         let data = &world.chunks[&chunk.coord];
 
         assert!(
@@ -992,23 +1047,15 @@ fn remesh_chunks(
             chunk.coord,
         );
 
-        let mesh = build_mesh(data, chunk.coord, &world, &atlas);
+        let data = Arc::clone(data);
+        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
+        let atlas = Arc::clone(&atlas.0);
+        let coord = chunk.coord;
+        let task = pool.spawn(async move { build_mesh(&data, coord, &neighbors, &atlas) });
 
-        match mesh3d {
-            Some(handle) => {
-                if let Err(error) = meshes.insert(&handle.0, mesh) {
-                    error!("Failed to update mesh for chunk {}: {error}", chunk.coord);
-                }
-            }
-            None => {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-            }
-        }
-
-        let data = &mut world[&chunk];
-        data.generation_phase = data.generation_phase.next();
-
-        commands.entity(entity).remove::<NeedsRemesh>();
+        commands.entity(entity)
+            .remove::<NeedsRemesh>()
+            .insert(MeshTask(task));
     }
 }
 
@@ -1040,7 +1087,7 @@ fn despawn_retired_chunks(
         info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
         // Keep the voxel data; only the entity goes away
         if let Some(data) = world.chunks.get_mut(&chunk.coord) {
-            data.entity = None;
+            Arc::make_mut(data).entity = None;
             data.save();
         }
 
