@@ -145,9 +145,9 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -233,7 +233,7 @@ impl ChunkGenerationPhase {
 }
 
 /// The set of neighboring chunks that must be ready before a generation phase can run.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct NeighborRequirement {
     /// How many chunks away to check, 0 meaning only the chunk itself.
     radius: i32,
@@ -252,9 +252,9 @@ impl NeighborRequirement {
     }
 }
 
-
+#[derive(Clone)]
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-struct ChunkData {
+pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[wincode(skip)]

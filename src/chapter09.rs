@@ -96,7 +96,7 @@ struct CameraSettings {
     mouse_sensitivity: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VoxelType {
     Air,
     Grass,

@@ -9,6 +9,7 @@ use super::VoxelType;
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_HEIGHT: usize = 64;
 
+#[derive(Clone)]
 pub struct ChunkData {
     position: ChunkPosition,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],

@@ -105,8 +105,8 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -157,7 +157,8 @@ struct NeedsRemesh;
 #[derive(Component)]
 struct NeedsDespawn;
 
-struct ChunkData {
+#[derive(Clone)]
+pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     entity: Option<Entity>,

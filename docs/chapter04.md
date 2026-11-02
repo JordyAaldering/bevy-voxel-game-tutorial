@@ -29,7 +29,7 @@ All a chunk needs to know is what voxels it has, and where.
 The _what_ is easy: we can create a `VoxelType` enum, that contains only the type of voxel and nothing else.
 
 ```rust
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
 }
