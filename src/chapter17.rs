@@ -20,11 +20,11 @@ use crate::{
     raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
     structure::Structure,
-    telemetry::{Telemetry, TelemetryPublisher},
+    telemetry::TelemetryPlugin,
     voxel_atlas::{VoxelAtlas, build_voxel_atlas},
 };
 
-use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, time::Duration};
+use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}};
 
 use better_default::Default;
 use bevy::{
@@ -33,7 +33,6 @@ use bevy::{
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
     input::mouse::AccumulatedMouseMotion,
     platform::collections::HashMap,
-    time::common_conditions::on_timer,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -584,17 +583,6 @@ impl IndexMut<&Chunk> for VoxelWorld {
 }
 
 fn main() -> AppExit {
-    let (sender, receiver) = tokio::sync::watch::channel(Telemetry::default());
-
-    // Run Tokio on its own thread, independently of the game
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        runtime.block_on(telemetry::run_server(receiver));
-    });
-
     App::new()
         .add_plugins((
             DefaultPlugins
@@ -605,6 +593,7 @@ fn main() -> AppExit {
             SystemInformationDiagnosticsPlugin::default(),
             ScreenshotPlugin::default(),
             PhysicsPlugin::new(is_gamemode_survival),
+            TelemetryPlugin,
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
@@ -615,7 +604,6 @@ fn main() -> AppExit {
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
         .register_type::<DebugGizmos>()
-        .insert_resource(TelemetryPublisher(sender))
         .add_observer(on_chunk_data_changed)
         .add_systems(Startup, (
             setup_chunk_material,
@@ -623,8 +611,6 @@ fn main() -> AppExit {
             spawn_player,
         ))
         .add_systems(Update, (
-            telemetry::collect_telemetry
-                .run_if(on_timer(Duration::from_millis(250))),
             toggle_cursor,
             draw_selected_voxel,
             (

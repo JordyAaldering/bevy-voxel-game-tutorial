@@ -19,13 +19,38 @@ https://docs.rs/axum/latest/axum/extract/ws/
 ```bash
 cargo add axum --features ws
 cargo add tokio --features rt-multi-thread,macros,net,sync,time
+cargo add async-compat
 cargo add serde --features derive
 cargo add serde_json
 ```
 
 - `axum` is a web framework for Rust, which we can use to serve a dashboard.
-- `tokio` is an async runtime for Rust, which we need to run the web server outside the Bevy game loop. Otherwise, the web server would block the game loop.
+- `tokio` is an async runtime for Rust, which axum is built on.
+- `async-compat` lets us run tokio-based futures on Bevy's own async task pools, so we don't need to manage a separate thread or runtime ourselves.
 - `serde` and `serde_json` are used to serialize the metrics data to JSON, which can be easily consumed by the browser dashboard.
+
+We wrap the server in a `TelemetryPlugin`, just like we did for the screenshot and physics plugins.
+The plugin spawns the server as an async task on Bevy's `IoTaskPool`, so it runs outside the game loop and never blocks it.
+Axum expects a tokio reactor, which Bevy's task pools don't provide, so we wrap the future in `Compat`.
+The plugin also adds a system that publishes a snapshot of the diagnostics every 250 milliseconds, through a `tokio::sync::watch` channel.
+
+```rust
+impl Plugin for TelemetryPlugin {
+    fn build(&self, app: &mut App) {
+        let (sender, receiver) = watch::channel(Telemetry::default());
+
+        IoTaskPool::get()
+            .spawn(Compat::new(run_server(receiver)))
+            .detach();
+
+        app.insert_resource(TelemetryPublisher(sender))
+            .add_systems(Update, collect_telemetry
+                .run_if(on_timer(Duration::from_millis(250))));
+    }
+}
+```
+
+Adding it to the game is then a single line: `TelemetryPlugin`.
 
 You can really take this quite far, and implement a full-featured dashboard with multiple pages, graphs, etc.
 I'm no web developer, so I'll keep it simple, but feel free to add more features to the dashboard at this point!

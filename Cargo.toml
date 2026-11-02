@@ -83,6 +83,7 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
+async-compat = "0.2.6"
 axum = { version = "0.8.9", features = ["ws"] }
 better_default = "1.0.5"
 bevy = { version = "0.20.1", features = ["dynamic_linking", "pan_orbit_camera"] }

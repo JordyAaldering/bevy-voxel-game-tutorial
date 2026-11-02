@@ -15,10 +15,10 @@ use crate::{
     physics::PhysicsPlugin,
     raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
-    telemetry::{Telemetry, TelemetryPublisher},
+    telemetry::TelemetryPlugin,
 };
 
-use std::{ops::{Index, IndexMut}, time::Duration};
+use std::ops::{Index, IndexMut};
 
 use better_default::Default;
 use bevy::{
@@ -27,7 +27,6 @@ use bevy::{
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
     platform::collections::HashMap,
-    time::common_conditions::on_timer,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -390,17 +389,6 @@ impl VoxelWorld {
 }
 
 fn main() -> AppExit {
-    let (sender, receiver) = tokio::sync::watch::channel(Telemetry::default());
-
-    // Run Tokio on its own thread, independently of the game
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        runtime.block_on(telemetry::run_server(receiver));
-    });
-
     App::new()
         .add_plugins((
             DefaultPlugins
@@ -413,6 +401,7 @@ fn main() -> AppExit {
             DefaultPanOrbitCameraPlugins,
             ScreenshotPlugin::default(),
             PhysicsPlugin::new(is_gamemode_survival),
+            TelemetryPlugin,
             EditorPlugin,
         ))
         .init_resource::<GameMode>()
@@ -423,7 +412,6 @@ fn main() -> AppExit {
         .init_resource::<DebugGizmos>()
         .register_type::<DebugGizmos>()
         .init_resource::<EditorState>()
-        .insert_resource(TelemetryPublisher(sender))
         .add_systems(EguiPrimaryContextPass, (
             editor::show_editor,
         ))
@@ -438,8 +426,6 @@ fn main() -> AppExit {
                 .chain(),
         ))
         .add_systems(Update, (
-            telemetry::collect_telemetry
-                .run_if(on_timer(Duration::from_millis(250))),
             editor_camera_input
                 .run_if(editor::is_editor_view_visible)
                 .before(SyncCameraPosition),

@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 
 use axum::{
     Router,
@@ -6,25 +6,46 @@ use axum::{
     response::{Html, Response},
     routing,
 };
+use async_compat::Compat;
 use bevy::{
     prelude::*,
+    tasks::IoTaskPool,
+    time::common_conditions::on_timer,
     diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin},
 };
 use serde::Serialize;
 use tokio::sync::watch;
 
+/// Serves the telemetry dashboard from an async task on Bevy's IO task pool.
+pub struct TelemetryPlugin;
+
 // Resource used by Bevy to publish the latest snapshot.
 #[derive(Resource)]
-pub struct TelemetryPublisher(pub watch::Sender<Telemetry>);
+struct TelemetryPublisher(pub watch::Sender<Telemetry>);
 
 #[derive(Clone, Debug, Default, Serialize)]
-pub struct Telemetry {
-    fps: f64,
-    frame_time_ms: f64,
+struct Telemetry {
+    frame_rate: f64,
+    frame_time: f64,
     entity_count: f64,
 }
 
-pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
+impl Plugin for TelemetryPlugin {
+    fn build(&self, app: &mut App) {
+        let (sender, receiver) = watch::channel(Telemetry::default());
+
+        // Axum requires a Tokio reactor, which `Compat` provides to the future.
+        IoTaskPool::get()
+            .spawn(Compat::new(run_server(receiver)))
+            .detach();
+
+        app.insert_resource(TelemetryPublisher(sender))
+            .add_systems(Update, collect_telemetry
+                .run_if(on_timer(Duration::from_millis(250))));
+    }
+}
+
+async fn run_server(receiver: watch::Receiver<Telemetry>) {
     let app = Router::new()
         .route("/", routing::get(index))
         .route("/ws", routing::get(websocket))
@@ -43,10 +64,7 @@ pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .unwrap();
 }
 
-pub fn collect_telemetry(
-    diagnostics: Res<DiagnosticsStore>,
-    publisher: Res<TelemetryPublisher>,
-) {
+fn collect_telemetry(diagnostics: Res<DiagnosticsStore>, publisher: Res<TelemetryPublisher>) {
     let value = |path| {
         diagnostics.get(path)
             .and_then(|d| d.smoothed())
@@ -54,8 +72,8 @@ pub fn collect_telemetry(
     };
 
     let snapshot = Telemetry {
-        fps: value(&FrameTimeDiagnosticsPlugin::FPS),
-        frame_time_ms: value(&FrameTimeDiagnosticsPlugin::FRAME_TIME),
+        frame_rate: value(&FrameTimeDiagnosticsPlugin::FPS),
+        frame_time: value(&FrameTimeDiagnosticsPlugin::FRAME_TIME),
         entity_count: value(&EntityCountDiagnosticsPlugin::ENTITY_COUNT),
     };
 
