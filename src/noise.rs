@@ -1,13 +1,15 @@
 pub mod opensimplex2s;
 pub mod voronoi;
 
+use crate::CHUNK_WIDTH;
+
+use better_default::Default;
 use bevy::math::Vec2;
 
 /// The underlying noise algorithm.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum NoiseType {
-    #[default]
     OpenSimplex2S,
     /// Distance to the nearest of randomly placed points; gives cell-like patterns.
     Voronoi,
@@ -30,11 +32,12 @@ impl NoiseType {
 }
 
 /// Configuration of fractal noise, independent of seed and size.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct NoiseSettings {
     /// The underlying noise algorithm.
+    #[default(NoiseType::OpenSimplex2S)]
     pub noise_type: NoiseType,
     /// Offset added to the sample position, in world units.
     /// Shifts the pattern without changing its shape.
@@ -42,9 +45,11 @@ pub struct NoiseSettings {
     /// Number of noise layers summed together. One octave gives smooth, rolling
     /// shapes; each extra octave adds finer detail on top (hills, then bumps,
     /// then roughness). More octaves cost proportionally more to compute.
+    #[default(1)]
     pub octaves: usize,
     /// Scale of the output, which lies in `[bias - amplitude, bias + amplitude]`.
     /// For terrain this is the height variation in blocks.
+    #[default(1.0)]
     pub amplitude: f32,
     /// Constant added to the output, centering its range around `bias`.
     /// For terrain this is the base height that the noise varies around.
@@ -52,33 +57,34 @@ pub struct NoiseSettings {
     /// Frequency of the first octave, in cycles per world unit.
     /// Higher values give features that are smaller and more frequent;
     /// lower values stretch the terrain out into broad, gentle features.
+    #[default(0.01)]
     pub frequency: f32,
     /// Amplitude multiplier per octave, typically in `(0, 1)`.
     /// Low values make the fine detail faint, so the terrain stays smooth;
     /// values near 1 give the fine octaves nearly equal weight, so it is rough.
+    #[default(0.5)]
     pub persistence: f32,
     /// Frequency multiplier per octave, typically around 2.
     /// Controls how much finer each successive layer of detail is.
     /// Higher values spread the detail scales further apart.
+    #[default(2.0)]
     pub lacunarity: f32,
 }
 
-impl Default for NoiseSettings {
-    fn default() -> Self {
-        Self {
-            noise_type: NoiseType::default(),
-            offset: Vec2::ZERO,
-            octaves: 1,
-            amplitude: 1.0,
-            bias: 0.0,
-            frequency: 0.01,
-            persistence: 0.5,
-            lacunarity: 2.0,
-        }
-    }
-}
-
 impl NoiseSettings {
+    #[allow(unused)]
+    pub fn area2(&self, seed: i64, chunk_x: i32, chunk_z: i32) -> Vec<f32> {
+        let chunk_x = chunk_x * CHUNK_WIDTH as i32;
+        let chunk_z = chunk_z * CHUNK_WIDTH as i32;
+        let mut map = Vec::with_capacity(CHUNK_WIDTH * CHUNK_WIDTH);
+        for z in 0..CHUNK_WIDTH as i32 {
+            for x in 0..CHUNK_WIDTH as i32 {
+                map.push(self.sample2(seed, (chunk_x + x) as f32, (chunk_z + z) as f32));
+            }
+        }
+        map
+    }
+
     /// Samples fractal noise at the given world position.
     #[allow(unused)]
     pub fn sample2(&self, seed: i64, x: f32, z: f32) -> f32 {
@@ -132,31 +138,3 @@ impl NoiseSettings {
         }
     }
 }
-
-/*
-/// A seeded noise map covering a `width` x `height` grid, computed in one batch.
-#[derive(Clone, Copy, Debug)]
-pub struct NoiseMap2d {
-    seed: i64,
-    width: usize,
-    height: usize,
-}
-
-impl NoiseMap2d {
-    pub fn new(seed: i64, width: usize, height: usize) -> Self {
-        Self { seed, width, height }
-    }
-
-    /// Computes the whole map, with the grid origin at world position `origin`.
-    /// Values are stored row-major: index `z * width + x`.
-    pub fn generate(&self, settings: &NoiseSettings, origin: Vec2) -> Vec<f32> {
-        let mut values = Vec::with_capacity(self.width * self.height);
-        for x in 0..self.width {
-            for z in 0..self.height {
-                values.push(settings.sample(self.seed, origin.x + x as f32, origin.y + z as f32));
-            }
-        }
-        values
-    }
-}
-*/

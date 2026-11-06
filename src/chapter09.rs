@@ -38,8 +38,8 @@ use bevy_inspector_egui::{
 const CHUNK_WIDTH: usize = 32;
 const CHUNK_HEIGHT: usize = 64;
 
-const ATLAS_ROWS: u32 = 4;
-const ATLAS_COLUMNS: u32 = 4;
+const ATLAS_ROWS: u32 = 10;
+const ATLAS_COLUMNS: u32 = 9;
 
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
@@ -121,13 +121,13 @@ impl VoxelType {
         match self {
             Self::Grass => {
                 match direction {
-                    Direction::Top => atlas_index(3, 1),
-                    Direction::Bottom => atlas_index(1, 0),
-                    _ => atlas_index(2, 0),
+                    Direction::Top => atlas_index(5, 1),
+                    Direction::Bottom => atlas_index(7, 5),
+                    _ => atlas_index(7, 4),
                 }
             },
-            Self::Dirt => atlas_index(1, 0),
-            Self::Stone => atlas_index(0, 0),
+            Self::Dirt => atlas_index(7, 5),
+            Self::Stone => atlas_index(3, 4),
             _ => unreachable!(),
         }
     }
@@ -367,7 +367,8 @@ fn spawn_player(
     mut commands: Commands,
     config: Res<TerrainConfig>,
 ) {
-    let world_height = terrain_height(&config, 0, 0) as f32 + 1.0;
+    let world_height = config.height.sample2(config.seed, 0.0, 0.0) as usize;
+    let world_height = world_height.clamp(0, CHUNK_HEIGHT - 1);
 
     commands.spawn((
             Name::new("Player"),
@@ -424,19 +425,13 @@ fn spawn_world(
     }
 }
 
-fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
-    let height = config.height.sample2(config.seed, world_x as f32, world_z as f32) as i32;
-    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
-}
-
 fn generate_chunk(chunk: &mut ChunkData, config: &TerrainConfig) {
+    let heights = config.height.area2(config.seed, chunk.coord.x, chunk.coord.z);
+
     for z in 0..CHUNK_WIDTH {
-        let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
-
         for x in 0..CHUNK_WIDTH {
-            let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
-
-            let height = terrain_height(config, world_x, world_z);
+            let idx = x + z * CHUNK_WIDTH;
+            let height = (heights[idx] as usize).clamp(0, CHUNK_HEIGHT - 1);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
