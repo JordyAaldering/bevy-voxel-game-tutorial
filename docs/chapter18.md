@@ -9,7 +9,8 @@ Instead, we should use _async readback_: the cave generation phase waits for res
 ## Plan
 
 For this chapter, move 3D OpenSimplex2S sampling for caves to the GPU.
-Assume the CPU noise implementation already uses `f32` and provides batch sampling; leave height generation, ores, structures, and meshing on the CPU.
+The CPU implementation already provides chunk-sized batches; for this plan, assume its noise calculations use `f32`.
+Leave height generation, ores, structures, and meshing on the CPU.
 
 1. **Define the noise batch.** Describe a 3D grid using its world-space origin, dimensions, seed, and `NoiseSettings`.
    The result is a flat array of `f32` values with a documented index order shared by the CPU and shader.
@@ -29,7 +30,7 @@ Assume the CPU noise implementation already uses `f32` and provides batch sampli
    Associate each job with a unique ID, chunk entity, coordinate, and phase so results for unloaded, replaced, or otherwise stale chunks are discarded.
    Report pipeline and readback failures explicitly; do not leave a chunk waiting indefinitely.
 
-5. **Apply the result on the CPU.** Change `generate_caves` to consume the returned noise array instead of sampling each voxel itself.
+5. **Apply the result on the CPU.** Change `generate_caves` to consume the GPU-returned array in place of its current CPU noise batch.
    Keep the existing threshold, terrain-height limit, and bottom-layer rules.
    Once the cave data is applied, complete the task, advance the phase, and notify the chunk and its neighbors as before.
    For cave configurations using a noise algorithm other than OpenSimplex2S, continue using the CPU implementation until a GPU implementation exists.

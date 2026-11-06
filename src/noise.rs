@@ -54,6 +54,7 @@ pub enum NoiseType {
 }
 
 impl NoiseSettings {
+    /// Samples a chunk-sized area in row-major order: x + z * CHUNK_WIDTH.
     #[allow(unused)]
     pub fn area2(&self, seed: i64, chunk_x: i32, chunk_z: i32) -> Vec<f32> {
         let chunk_x = chunk_x * CHUNK_WIDTH as i32;
@@ -69,6 +70,7 @@ impl NoiseSettings {
         map
     }
 
+    /// Samples a chunk-sized volume in voxel order: x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z).
     #[allow(unused)]
     pub fn area3(&self, seed: i64, chunk_x: i32, chunk_z: i32) -> Vec<f32> {
         let chunk_x = chunk_x * CHUNK_WIDTH as i32;
@@ -99,7 +101,7 @@ impl NoiseSettings {
         for octave in 0..self.octaves {
             // Decorrelate octaves by giving each its own seed
             let octave_seed = seed.wrapping_add(octave as i64);
-            total += amplitude * self.noise_type.sample2(octave_seed, (x * frequency) as f64, (z * frequency) as f64);
+            total += amplitude * self.noise_type.sample2(octave_seed, x * frequency, z * frequency);
             max += amplitude;
             amplitude *= self.persistence;
             frequency *= self.lacunarity;
@@ -124,7 +126,7 @@ impl NoiseSettings {
         for octave in 0..self.octaves {
             // Decorrelate octaves by giving each its own seed
             let octave_seed = seed.wrapping_add(octave as i64);
-            total += amplitude * self.noise_type.sample3(octave_seed, (x * frequency) as f64, (y * frequency) as f64, (z * frequency) as f64);
+            total += amplitude * self.noise_type.sample3(octave_seed, x * frequency, y * frequency, z * frequency);
             max += amplitude;
             amplitude *= self.persistence;
             frequency *= self.lacunarity;
@@ -139,17 +141,17 @@ impl NoiseSettings {
 }
 
 impl NoiseType {
-    fn sample2(self, seed: i64, x: f64, z: f64) -> f32 {
+    fn sample2(self, seed: i64, x: f32, z: f32) -> f32 {
         match self {
-            Self::OpenSimplex2S => opensimplex2s::noise2(seed, x, z),
-            Self::Voronoi => voronoi::noise2(seed, x, z),
+            Self::OpenSimplex2S => opensimplex2s::noise2(seed, x as f64, z as f64),
+            Self::Voronoi => voronoi::noise2(seed, x as f64, z as f64),
         }
     }
 
-    fn sample3(self, seed: i64, x: f64, y: f64, z: f64) -> f32 {
+    fn sample3(self, seed: i64, x: f32, y: f32, z: f32) -> f32 {
         match self {
-            Self::OpenSimplex2S => opensimplex2s::noise3(seed, x, y, z),
-            Self::Voronoi => voronoi::noise3(seed, x, y, z),
+            Self::OpenSimplex2S => opensimplex2s::noise3(seed, x as f64, y as f64, z as f64),
+            Self::Voronoi => voronoi::noise3(seed, x as f64, y as f64, z as f64),
         }
     }
 }

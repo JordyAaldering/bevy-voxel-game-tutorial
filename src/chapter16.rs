@@ -783,13 +783,10 @@ fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
 }
 
 fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
+    let heights = config.height.area2(config.seed, chunk.coord.x, chunk.coord.z);
     for x in 0..CHUNK_WIDTH {
-        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
-
         for z in 0..CHUNK_WIDTH {
-            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
-
-            let height = terrain_height(config, world_x, world_z);
+            let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
@@ -813,13 +810,15 @@ fn generate_structures(coord: ChunkCoord, config: &TerrainConfig) -> Vec<WorldCo
         (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
     ];
 
+    let heights = config.height.area2(config.seed, coord.x, coord.z);
     let mut origins = Vec::new();
     for (x, z) in TREE_COLUMNS {
         let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
         let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
 
         // Trees stand on top of the grass
-        let world_y = terrain_height(config, world_x, world_z) as i32 + 1;
+        let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
+        let world_y = height as i32 + 1;
         origins.push(WorldCoord::new(world_x, world_y, world_z));
     }
     origins
@@ -870,9 +869,9 @@ fn is_face_visible(
         return neighbor.is_transparent();
     }
 
-    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
     let Ok(compass) = direction.try_into() else {
-        return true;
+        return direction == Direction::Top;
     };
 
     let neighbor_chunk = neighbors[compass].as_ref()

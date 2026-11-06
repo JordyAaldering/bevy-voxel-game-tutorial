@@ -776,13 +776,10 @@ fn spawn_chunks_around_player(
 const SUBSURFACE_DEPTH: usize = 2;
 
 fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
+    let columns = config.columns(chunk.coord);
     for x in 0..CHUNK_WIDTH {
-        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
-
         for z in 0..CHUNK_WIDTH {
-            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
-
-            let column = config.column(world_x, world_z);
+            let column = &columns[x + z * CHUNK_WIDTH];
             let height = column.height;
 
             chunk[VoxelCoord::new(x, height, z)] = column.surface;
@@ -800,17 +797,16 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
 /// Carves caves out of the terrain, which has to be done before structures are placed on top of it.
 /// Only this chunk is read and written, the noise is a pure function of the world position.
 fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
+    let columns = config.columns(chunk.coord);
+    let noise = config.cave_noise(chunk.coord);
     for x in 0..CHUNK_WIDTH {
-        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
-
         for z in 0..CHUNK_WIDTH {
-            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
-
-            let height = config.column(world_x, world_z).height;
+            let height = columns[x + z * CHUNK_WIDTH].height;
             // Caves may open up at the surface, only the bottom layer is kept
             for y in 1..=height {
-                if config.is_cave(world_x, y as i32, world_z) {
-                    chunk[VoxelCoord::new(x, y, z)] = VoxelType::Air;
+                let pos = VoxelCoord::new(x, y, z);
+                if noise[pos.index()] > config.caves.threshold {
+                    chunk[pos] = VoxelType::Air;
                 }
             }
         }
@@ -839,6 +835,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig) {
 }
 
 fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoord> {
+    let columns = config.columns(coord);
     let mut origins = Vec::new();
     for z in 0..CHUNK_WIDTH {
         let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
@@ -846,8 +843,8 @@ fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoor
         for x in 0..CHUNK_WIDTH {
             let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
 
-            let column = config.column(world_x, world_z);
-            if config.has_tree(&column, world_x, world_z) {
+            let column = &columns[x + z * CHUNK_WIDTH];
+            if config.has_tree(column, world_x, world_z) {
                 // Trees stand on top of the surface
                 let world_y = column.height as i32 + 1;
                 origins.push(WorldCoord::new(world_x, world_y, world_z));
@@ -902,9 +899,9 @@ fn is_face_visible(
         return neighbor.is_transparent();
     }
 
-    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
     let Ok(compass) = direction.try_into() else {
-        return true;
+        return direction == Direction::Top;
     };
 
     let neighbor_chunk = neighbors[compass].as_ref()

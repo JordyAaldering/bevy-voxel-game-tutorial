@@ -475,9 +475,9 @@ fn is_face_visible(chunk: &ChunkData, neighbors: &ChunkNeighbors, voxel_pos: Vox
         return neighbor.is_transparent();
     }
 
-    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
     let Ok(compass) = direction.try_into() else {
-        return true;
+        return direction == Direction::Top;
     };
 
     // If the chunk does not exist, we assume it is empty and show the face

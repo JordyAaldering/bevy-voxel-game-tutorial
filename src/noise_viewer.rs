@@ -56,14 +56,13 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 }
 
 fn render(viewer: &Viewer, image: &mut Image) {
-    let half = SIZE as f32 / 2.0;
     // Maps the output range [bias - amplitude, bias + amplitude] to [0, 255].
     let range = viewer.settings.amplitude.abs().max(f32::EPSILON);
     let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
 
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let value = viewer.settings.sample2(viewer.seed, x as f32 - half, y as f32 - half);
+            let value = viewer.settings.sample2(viewer.seed, x as f32, y as f32);
             let t = ((value - viewer.settings.bias) / range * 0.5 + 0.5).clamp(0.0, 1.0);
             let v = (t * 255.0) as u8;
             data.extend_from_slice(&[v, v, v, 255]);

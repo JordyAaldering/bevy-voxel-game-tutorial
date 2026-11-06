@@ -96,3 +96,7 @@ In the future we might also need to check, for example, if the player does not a
 For now, we can just use the heightmap data.
 
 ## `NoiseSettings` and `TerrainConfig`
+
+`NoiseSettings::area2` samples a chunk-sized heightmap in world coordinates, with
+`x + z * CHUNK_WIDTH` indexing. Chunk generation consumes the batch, while a
+single-position sample remains useful for finding the player spawn height.

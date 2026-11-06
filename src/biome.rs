@@ -1,4 +1,4 @@
-use crate::{CHUNK_HEIGHT, VoxelType, noise::NoiseSettings, ore::Ore, write_atomic};
+use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, VoxelType, coords::ChunkCoord, noise::NoiseSettings, ore::Ore, write_atomic};
 
 use std::{fs, io, path::{Path, PathBuf}};
 
@@ -99,7 +99,43 @@ impl WorldConfig {
         let (fx, fz) = (x as f32, z as f32);
         let temperature = self.climate.temperature.sample2(self.seed.wrapping_add(TEMPERATURE_SEED_OFFSET), fx, fz);
         let humidity = self.climate.humidity.sample2(self.seed.wrapping_add(HUMIDITY_SEED_OFFSET), fx, fz);
+        self.column_from_samples(x, z, temperature, humidity, |index| {
+            self.biomes[index].height.sample2(self.seed, fx, fz)
+        })
+    }
 
+    /// Generates columns in row-major order, with x varying fastest.
+    pub fn columns(&self, coord: ChunkCoord) -> Vec<Column> {
+        let temperature = self.climate.temperature.area2(
+            self.seed.wrapping_add(TEMPERATURE_SEED_OFFSET), coord.x, coord.z,
+        );
+        let humidity = self.climate.humidity.area2(
+            self.seed.wrapping_add(HUMIDITY_SEED_OFFSET), coord.x, coord.z,
+        );
+        let heights: Vec<_> = self.biomes.iter()
+            .map(|biome| biome.height.area2(self.seed, coord.x, coord.z))
+            .collect();
+
+        (0..CHUNK_WIDTH).flat_map(|z| (0..CHUNK_WIDTH).map(move |x| (x, z)))
+            .map(|(x, z)| {
+                let index = x + z * CHUNK_WIDTH;
+                let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+                let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+                self.column_from_samples(world_x, world_z, temperature[index], humidity[index], |biome| {
+                    heights[biome][index]
+                })
+            })
+            .collect()
+    }
+
+    fn column_from_samples(
+        &self,
+        x: i32,
+        z: i32,
+        temperature: f32,
+        humidity: f32,
+        mut height_sample: impl FnMut(usize) -> f32,
+    ) -> Column {
         let distance = |biome: &Biome| {
             let dt = biome.temperature - temperature;
             let dh = biome.humidity - humidity;
@@ -107,15 +143,15 @@ impl WorldConfig {
         };
         let nearest = self.biomes.iter().map(distance).fold(f32::INFINITY, f32::min);
         // The nearest biome always has weight `blend`, so the total is positive.
-        // Deep inside a biome it is the only one with any weight, and the others are not sampled.
+        // Deep inside a biome it is the only one with any weight.
         let weight = |biome: &Biome| (nearest + self.climate.blend - distance(biome)).max(0.0);
         let total: f32 = self.biomes.iter().map(weight).sum();
 
         let mut height = 0.0;
-        for biome in &self.biomes {
+        for (index, biome) in self.biomes.iter().enumerate() {
             let weight = weight(biome);
             if weight > 0.0 {
-                height += weight / total * biome.height.sample2(self.seed, fx, fz);
+                height += weight / total * height_sample(index);
             }
         }
         let height = (height as i32).clamp(0, CHUNK_HEIGHT as i32 - 1) as usize;
@@ -144,10 +180,10 @@ impl WorldConfig {
         }
     }
 
-    /// Whether a cave is carved out at this position.
-    pub fn is_cave(&self, x: i32, y: i32, z: i32) -> bool {
+    /// Noise values for cave generation in voxel index order.
+    pub fn cave_noise(&self, coord: ChunkCoord) -> Vec<f32> {
         let seed = self.seed.wrapping_add(CAVE_SEED_OFFSET);
-        self.caves.noise.sample3(seed, x as f32, y as f32, z as f32) > self.caves.threshold
+        self.caves.noise.area3(seed, coord.x, coord.z)
     }
 
     /// The ore voxel at this position, if any. The first ore in `ores` wins where clusters overlap.

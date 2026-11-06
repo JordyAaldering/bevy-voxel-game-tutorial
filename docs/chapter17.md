@@ -32,11 +32,12 @@ For caves we can use the 3D simplex noise algorithm.
    - `GenerateStructures` needs radius 1 including diagonals, because a tree near a corner can overflow into the diagonal chunk.
    - `MeshGeneration` needs radius 1 including diagonals: only touching chunks matter for hiding faces, but diagonal chunks can still write structures into this chunk.
 3. **Check readiness in one place.** The separate `neighbors_ready_for_structures` and `neighbors_ready_for_mesh` are replaced by `VoxelWorld::neighbors_ready_for(coord, phase)`, which checks every offset of the phase's requirement.
-4. **Make 3D noise available.** `NoiseSettings::sample3` is the fractal version of the 3D OpenSimplex2S noise, with the same octaves, frequency, and so on as `sample2`.
+4. **Make 3D noise available.** `NoiseSettings::area3` batches a chunk-sized volume using the same fractal settings as `sample3`, in voxel-index order.
+   Climate and biome-height maps are likewise sampled in 2D batches to produce a chunk's columns.
 5. **Add `Caves` to `WorldConfig`.**
    It holds the `noise` settings and a `threshold`.
    It is `#[serde(default)]`, so existing `world.json` files keep loading and get the default caves.
-6. **Carve.** `generate_caves` visits every column of the chunk and sets a voxel to air when the 3D noise at its world position is above `threshold`.
+6. **Carve.** `generate_caves` reads a batch of 3D noise values and sets a voxel to air when the value at its world position is above `threshold`.
    Because the noise only depends on the world position, caves continue across chunk borders without needing to look at the neighbors.
    Only the lowest layer is never carved, so caves do not open up the bottom of the world.
    Caves can break through the surface, which gives cave entrances.
