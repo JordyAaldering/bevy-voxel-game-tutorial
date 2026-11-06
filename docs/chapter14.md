@@ -36,6 +36,7 @@ We already use the JSON format for the telemetry server, so here I'll choose to 
 5. Run the exit-save system in Bevy's `OnAppExitSystems` set, which runs after the window-exit system sends `AppExit`; placing it in `Last` alone can make it check before the exit message is sent.
 6. Derive serde's `Serialize` and `Deserialize` for `CameraSettings`, with `#[serde(default)]` so missing fields fall back to their defaults. Load it from `savedata/settings/camera.json` as JSON at startup (using the defaults if the file is missing or invalid), and save it on application exit so changes made in the inspector persist. This is the second kind of data from the previous section: small and human-editable, so JSON is more suitable than a binary format.
 7. Notify a chunk's neighbors whenever it is spawned. Chunks only mesh once all four neighbors exist, and freshly generated chunks normally notify their neighbors after height generation. Chunks loaded from disk skip that phase, so without this notification the chunks next to them never get meshed.
+8. Use the same `ChunkGenerationTask` lifecycle as chapter 13 for height generation and meshing. Saves contain the last completed phase, so an unloaded chunk can resume a canceled task after it is loaded again; completed chunks are remeshed.
 
 ## Improvements
 

@@ -30,7 +30,7 @@ For caves we can use the 3D simplex noise algorithm.
    It returns a `NeighborRequirement { radius, diagonal }`: how many chunks away to look (0 is only the chunk itself), and whether chunks outside the same row or column count.
    - `HeightGeneration` and `CaveGeneration` need nothing, because noise is a pure function of the world position, so the chunk only reads and writes itself.
    - `GenerateStructures` needs radius 1 including diagonals, because a tree near a corner can overflow into the diagonal chunk.
-   - `MeshGeneration` needs radius 1 without diagonals, because only the touching chunks matter for hiding faces.
+   - `MeshGeneration` needs radius 1 including diagonals: only touching chunks matter for hiding faces, but diagonal chunks can still write structures into this chunk.
 3. **Check readiness in one place.** The separate `neighbors_ready_for_structures` and `neighbors_ready_for_mesh` are replaced by `VoxelWorld::neighbors_ready_for(coord, phase)`, which checks every offset of the phase's requirement.
 4. **Make 3D noise available.** `NoiseSettings::sample3` is the fractal version of the 3D OpenSimplex2S noise, with the same octaves, frequency, and so on as `sample2`.
 5. **Add `Caves` to `WorldConfig`.**
@@ -41,6 +41,7 @@ For caves we can use the 3D simplex noise algorithm.
    Only the lowest layer is never carved, so caves do not open up the bottom of the world.
    Caves can break through the surface, which gives cave entrances.
    The noise has its own seed offset, so it does not correlate with the terrain.
+   Height, ore, cave, structure-origin, and mesh work all use `ChunkGenerationTask`. Structure placement is applied to the live world after the task completes, and voxel interaction waits until nearby structure generation is complete.
 7. **Test it.** One test checks that caves are a small part of the underground (the default is about 3%), and another that an old config without `caves` still loads.
 
 ### Tuning

@@ -51,7 +51,7 @@ const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 
-#[derive(Resource)]
+#[derive(Clone, Resource)]
 struct TerrainConfig {
     seed: i64,
     height: NoiseSettings,
@@ -218,12 +218,18 @@ struct Chunk {
 #[derive(Resource)]
 struct ChunkMaterial(Handle<StandardMaterial>);
 
+/// Marks a chunk for a generation check when it or its neighbors change.
 #[derive(Component)]
-struct NeedsRemesh;
+struct NeedsGenerationCheck;
 
-/// A mesh that is being built on another thread. Dropping it cancels the task.
+/// A chunk generation phase running on another thread. Dropping it cancels the task.
 #[derive(Component)]
-struct MeshTask(Task<Mesh>);
+struct ChunkGenerationTask(Task<ChunkGenerationResult>);
+
+enum ChunkGenerationResult {
+    Data(ChunkGenerationPhase, Box<ChunkData>),
+    Mesh(Mesh),
+}
 
 #[derive(Component)]
 struct NeedsDespawn;
@@ -385,7 +391,7 @@ impl IndexMut<VoxelCoord> for ChunkData {
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    /// Chunk data is shared with meshing tasks. Writes use copy-on-write.
+    /// Chunk data is shared with generation tasks. Writes use copy-on-write.
     chunks: HashMap<ChunkCoord, Arc<ChunkData>>,
 }
 
@@ -483,10 +489,12 @@ impl VoxelWorld {
         }
 
         let chunk_pos = pos.chunk_coord();
-        self.get_chunk(chunk_pos).map(|chunk| {
-            let voxel_pos = pos.local_coord();
-            chunk[voxel_pos]
-        })
+        self.get_chunk(chunk_pos)
+            .filter(|chunk| chunk.generation_phase > ChunkGenerationPhase::HeightGeneration)
+            .map(|chunk| {
+                let voxel_pos = pos.local_coord();
+                chunk[voxel_pos]
+            })
     }
 
     fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
@@ -605,8 +613,8 @@ fn main() -> AppExit {
         .add_systems(PostUpdate, (
             (
                 despawn_retired_chunks,
-                poll_mesh_tasks,
-                remesh_chunks,
+                poll_chunk_generation_tasks,
+                start_chunk_generation_tasks,
             ).chain(),
         ))
         .add_systems(Last, save_on_exit.in_set(OnAppExitSystems))
@@ -814,8 +822,7 @@ fn is_face_visible(
 fn on_chunk_data_changed(
     event: On<ChunkDataChanged>,
     chunks: Query<&Chunk>,
-    config: Res<TerrainConfig>,
-    mut world: ResMut<VoxelWorld>,
+    world: Res<VoxelWorld>,
     mut commands: Commands,
 ) {
     // May be None if the chunk was despawned before the event was processed
@@ -823,101 +830,103 @@ fn on_chunk_data_changed(
         return;
     };
 
-    let coord = chunk.coord;
-
-    let phase = {
-        let data = &mut world[&chunk];
-
-        // Ignore events for entities that have since been replaced by a reloaded chunk
-        if data.entity != Some(event.entity) {
-            return;
-        }
-
-        data.generation_phase
-    };
-
-    match phase {
-        ChunkGenerationPhase::HeightGeneration => {
-            info!("Generating height data for chunk {}", coord);
-            generate_chunk_height(&mut world[&chunk], &config);
-            world.notify_neighbors(&mut commands, coord);
-
-            let data = &mut world[&chunk];
-            data.generation_phase = data.generation_phase.next();
-        }
-        // A chunk that is already done may need to be meshed again, e.g. after being reloaded
-        ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
-            if world.neighbors_ready_for(coord, ChunkGenerationPhase::MeshGeneration) {
-                info!("Generating mesh for chunk {}", coord);
-                commands.entity(event.entity).insert(NeedsRemesh);
-                // Don't advance to the next phase yet, this will happen after the mesh is built
-            }
-        }
-    };
+    // Ignore events for entities that have since been replaced by a reloaded chunk.
+    if world[&chunk].entity == Some(event.entity) {
+        commands.entity(event.entity).insert(NeedsGenerationCheck);
+    }
 }
 
-fn poll_mesh_tasks(
+fn poll_chunk_generation_tasks(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut tasks: Query<(Entity, &Chunk, &mut MeshTask, Option<&Mesh3d>)>,
+    mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&Mesh3d>)>,
 ) -> Result<(), BevyError> {
     for (entity, chunk, mut task, mesh3d) in &mut tasks {
-        let Some(mesh) = block_on(future::poll_once(&mut task.0)) else {
+        let Some(result) = block_on(future::poll_once(&mut task.0)) else {
             continue;
         };
 
-        match mesh3d {
-            Some(handle) => {
-                meshes.insert(&handle.0, mesh)?;
+        match result {
+            ChunkGenerationResult::Data(phase, generated) => {
+                let data = &mut world[chunk];
+                assert_eq!(data.generation_phase, phase);
+                data.voxels = generated.voxels;
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord);
+                world.notify_neighbors(&mut commands, chunk.coord);
             }
-            None => {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            ChunkGenerationResult::Mesh(mesh) => {
+                match mesh3d {
+                    Some(handle) => {
+                        meshes.insert(&handle.0, mesh)?;
+                    }
+                    None => {
+                        commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                    }
+                }
+
+                let data = &mut world[chunk];
+                assert!(data.generation_phase >= ChunkGenerationPhase::MeshGeneration);
+                data.generation_phase = data.generation_phase.next();
             }
         }
 
-        commands.entity(entity).remove::<MeshTask>();
-
-        let data = world.chunks.get_mut(&chunk.coord)
-            .expect("A chunk entity cannot exist without its data");
-        let data = Arc::make_mut(data);
-        data.generation_phase = data.generation_phase.next();
+        commands.entity(entity).remove::<ChunkGenerationTask>();
     }
 
     Ok(())
 }
 
-fn remesh_chunks(
+fn start_chunk_generation_tasks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
+    config: Res<TerrainConfig>,
     atlas: Res<SharedVoxelAtlas>,
-    chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
+    chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();
 
     for (entity, chunk) in &chunks {
         let data = &world.chunks[&chunk.coord];
 
-        assert!(
-            data.generation_phase >= ChunkGenerationPhase::MeshGeneration,
-            "Chunk {} was marked for remeshing before reaching mesh generation",
-            chunk.coord,
-        );
-        assert!(
-            world.neighbors_ready_for(chunk.coord, ChunkGenerationPhase::MeshGeneration),
-            "Chunk {} was marked for remeshing before its neighbors were ready",
-            chunk.coord,
-        );
+        let phase = data.generation_phase;
+        commands.entity(entity).remove::<NeedsGenerationCheck>();
 
-        let data = Arc::clone(data);
-        let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
-        let atlas = Arc::clone(&atlas.0);
-        let coord = chunk.coord;
-        let task = pool.spawn(async move { build_mesh(&data, coord, &neighbors, &atlas) });
+        if !world.neighbors_ready_for(chunk.coord, match phase {
+            ChunkGenerationPhase::Done => ChunkGenerationPhase::MeshGeneration,
+            _ => phase,
+        }) {
+            continue;
+        }
 
-        commands.entity(entity)
-            .remove::<NeedsRemesh>()
-            .insert(MeshTask(task));
+        let task = match phase {
+            ChunkGenerationPhase::HeightGeneration => {
+                let data = Arc::clone(data);
+                let config = config.clone();
+                info!("Generating {:?} for chunk {}", phase, chunk.coord);
+                pool.spawn(async move {
+                    let mut generated = Box::new((*data).clone());
+                    match phase {
+                        ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
+                        _ => unreachable!(),
+                    }
+                    ChunkGenerationResult::Data(phase, generated)
+                })
+            }
+            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
+                let data = Arc::clone(data);
+                let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
+                let atlas = Arc::clone(&atlas.0);
+                let coord = chunk.coord;
+                info!("Generating mesh for chunk {}", coord);
+                pool.spawn(async move {
+                    ChunkGenerationResult::Mesh(build_mesh(&data, coord, &neighbors, &atlas))
+                })
+            }
+        };
+
+        commands.entity(entity).insert(ChunkGenerationTask(task));
     }
 }
 
@@ -1160,7 +1169,9 @@ fn break_place_block(
             world.set_voxel(&mut commands, coord, VoxelType::Air);
         } else /* if do_place */ {
             let neighbor = coord.shift(direction);
-            world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
+            if world.get_voxel(neighbor).is_some() {
+                world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
+            }
         }
     }
 }

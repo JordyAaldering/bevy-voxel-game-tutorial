@@ -54,3 +54,4 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
    `VoxelAtlas::texture(voxel, direction, variant_seed)` replaces the old hardcoded `VoxelType::texture`, and the `ATLAS_*` constants are removed.
 9. **Use it.** `setup_chunk_material` calls `build_voxel_atlas`, uses the resulting image as the material's `base_color_texture`, and inserts `VoxelAtlas` as a resource.
    `build_mesh` now takes `&VoxelAtlas`, and passes `atlas.layout` to `MeshData` for the UV calculation.
+   The shared `ChunkGenerationTask` continues to run height generation and meshing asynchronously.
