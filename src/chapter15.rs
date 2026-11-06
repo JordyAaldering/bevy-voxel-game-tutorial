@@ -39,8 +39,8 @@ use bevy_inspector_egui::{
     bevy_egui::prelude::*,
 };
 
-const CHUNK_WIDTH: usize = 32;
-const CHUNK_HEIGHT: usize = 64;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 
 const CHUNK_LOAD_RADIUS: i32 = 2;
 

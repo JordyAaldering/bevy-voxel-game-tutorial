@@ -11,7 +11,8 @@ use bevy_inspector_egui::bevy_egui::{
     EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, egui,
 };
 
-const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 
 const SIZE: u32 = 512;
 

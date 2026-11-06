@@ -28,8 +28,8 @@ use bevy_inspector_egui::{
     quick::WorldInspectorPlugin,
 };
 
-const CHUNK_WIDTH: usize = 3;
-const CHUNK_HEIGHT: usize = 4;
+pub const CHUNK_WIDTH: usize = 3;
+pub const CHUNK_HEIGHT: usize = 4;
 
 const ATLAS_ROWS: u32 = 10;
 const ATLAS_COLUMNS: u32 = 9;

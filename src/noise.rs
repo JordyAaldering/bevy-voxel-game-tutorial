@@ -1,37 +1,12 @@
 pub mod opensimplex2s;
 pub mod voronoi;
 
-use crate::CHUNK_WIDTH;
+use crate::{CHUNK_HEIGHT, CHUNK_WIDTH};
 
 use better_default::Default;
 use bevy::math::Vec2;
 
-/// The underlying noise algorithm.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub enum NoiseType {
-    OpenSimplex2S,
-    /// Distance to the nearest of randomly placed points; gives cell-like patterns.
-    Voronoi,
-}
-
-impl NoiseType {
-    fn sample2(self, seed: i64, x: f64, z: f64) -> f32 {
-        match self {
-            Self::OpenSimplex2S => opensimplex2s::noise2(seed, x, z),
-            Self::Voronoi => voronoi::noise2(seed, x, z),
-        }
-    }
-
-    fn sample3(self, seed: i64, x: f64, y: f64, z: f64) -> f32 {
-        match self {
-            Self::OpenSimplex2S => opensimplex2s::noise3(seed, x, y, z),
-            Self::Voronoi => voronoi::noise3(seed, x, y, z),
-        }
-    }
-}
-
-/// Configuration of fractal noise, independent of seed and size.
+/// Configuration of noise, independent of seed and size.
 #[derive(Clone, Copy, Default, Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -71,22 +46,47 @@ pub struct NoiseSettings {
     pub lacunarity: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum NoiseType {
+    OpenSimplex2S,
+    Voronoi,
+}
+
 impl NoiseSettings {
     #[allow(unused)]
     pub fn area2(&self, seed: i64, chunk_x: i32, chunk_z: i32) -> Vec<f32> {
         let chunk_x = chunk_x * CHUNK_WIDTH as i32;
         let chunk_z = chunk_z * CHUNK_WIDTH as i32;
+
         let mut map = Vec::with_capacity(CHUNK_WIDTH * CHUNK_WIDTH);
         for z in 0..CHUNK_WIDTH as i32 {
             for x in 0..CHUNK_WIDTH as i32 {
                 map.push(self.sample2(seed, (chunk_x + x) as f32, (chunk_z + z) as f32));
             }
         }
+
+        map
+    }
+
+    #[allow(unused)]
+    pub fn area3(&self, seed: i64, chunk_x: i32, chunk_z: i32) -> Vec<f32> {
+        let chunk_x = chunk_x * CHUNK_WIDTH as i32;
+        let chunk_z = chunk_z * CHUNK_WIDTH as i32;
+
+        let mut map = Vec::with_capacity(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH);
+        for z in 0..CHUNK_WIDTH as i32 {
+            for y in 0..CHUNK_HEIGHT as i32 {
+                for x in 0..CHUNK_WIDTH as i32 {
+                    map.push(self.sample3(seed, (chunk_x + x) as f32, y as f32, (chunk_z + z) as f32));
+                }
+            }
+        }
+
         map
     }
 
     /// Samples fractal noise at the given world position.
-    #[allow(unused)]
     pub fn sample2(&self, seed: i64, x: f32, z: f32) -> f32 {
         let x = x + self.offset.x;
         let z = z + self.offset.y;
@@ -112,7 +112,6 @@ impl NoiseSettings {
         }
     }
 
-    #[allow(unused)]
     pub fn sample3(&self, seed: i64, x: f32, y: f32, z: f32) -> f32 {
         let x = x + self.offset.x;
         let z = z + self.offset.y;
@@ -135,6 +134,22 @@ impl NoiseSettings {
             self.bias
         } else {
             (total / max) as f32 * self.amplitude + self.bias
+        }
+    }
+}
+
+impl NoiseType {
+    fn sample2(self, seed: i64, x: f64, z: f64) -> f32 {
+        match self {
+            Self::OpenSimplex2S => opensimplex2s::noise2(seed, x, z),
+            Self::Voronoi => voronoi::noise2(seed, x, z),
+        }
+    }
+
+    fn sample3(self, seed: i64, x: f64, y: f64, z: f64) -> f32 {
+        match self {
+            Self::OpenSimplex2S => opensimplex2s::noise3(seed, x, y, z),
+            Self::Voronoi => voronoi::noise3(seed, x, y, z),
         }
     }
 }

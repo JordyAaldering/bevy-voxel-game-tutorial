@@ -39,8 +39,8 @@ use bevy_inspector_egui::{
     bevy_egui::prelude::*,
 };
 
-const CHUNK_WIDTH: usize = 32;
-const CHUNK_HEIGHT: usize = 64;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 
 // Meshing a chunk needs structures generated in all 8 neighbours, which in turn need terrain in their
 // neighbours, so the outermost two rings of loaded chunks are not meshed.

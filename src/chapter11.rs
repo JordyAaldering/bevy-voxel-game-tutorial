@@ -38,8 +38,8 @@ use bevy_inspector_egui::{
     quick::WorldInspectorPlugin,
 };
 
-const CHUNK_WIDTH: usize = 32;
-const CHUNK_HEIGHT: usize = 64;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 
 const CHUNK_LOAD_RADIUS: i32 = 1;
 
