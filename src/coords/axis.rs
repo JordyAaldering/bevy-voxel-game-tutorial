@@ -8,7 +8,7 @@ pub enum Axis {
 }
 
 impl Axis {
-    pub fn get(self, v: &Vec3) -> f32 {
+    pub const fn get(self, v: &Vec3) -> f32 {
         match self {
             Self::X => v.x,
             Self::Y => v.y,
@@ -16,7 +16,7 @@ impl Axis {
         }
     }
 
-    pub fn set(self, v: &mut Vec3, value: f32) {
+    pub const fn set(self, v: &mut Vec3, value: f32) {
         match self {
             Self::X => v.x = value,
             Self::Y => v.y = value,

@@ -227,7 +227,7 @@ impl VoxelWorld {
         coord: ChunkCoord,
     ) -> Entity {
         let entity = commands.spawn((
-            Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
+            Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
             Chunk { coord },
             NeedsRemesh,
@@ -254,7 +254,7 @@ impl VoxelWorld {
     }
 
     fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
-        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
+        if !pos.in_bounds() {
             return None;
         }
 

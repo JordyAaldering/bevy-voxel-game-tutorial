@@ -317,7 +317,7 @@ impl VoxelWorld {
     /// Spawns an entity for the chunk at `coord`, creating data if it does not exist.
     fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
         let entity = commands.spawn((
-            Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
+            Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
             Chunk { coord },
         )).id();
@@ -335,7 +335,7 @@ impl VoxelWorld {
     }
 
     fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
-        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
+        if !pos.in_bounds() {
             return None;
         }
 
@@ -358,14 +358,14 @@ impl VoxelWorld {
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z));
+            self.notify_chunk(commands, chunk_pos + Compass::Left);
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x + 1, chunk_pos.z));
+            self.notify_chunk(commands, chunk_pos + Compass::Right);
         }
         if voxel_pos.z == 0 {
-            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z - 1));
+            self.notify_chunk(commands, chunk_pos + Compass::Back);
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z + 1));
+            self.notify_chunk(commands, chunk_pos + Compass::Front);
         }
     }
 

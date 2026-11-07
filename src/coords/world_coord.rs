@@ -1,6 +1,6 @@
 use super::{Direction, ChunkCoord, VoxelCoord};
 
-use crate::CHUNK_WIDTH;
+use crate::{CHUNK_HEIGHT, CHUNK_WIDTH};
 
 use bevy::math::{Vec3, vec3};
 
@@ -9,9 +9,9 @@ use bevy::math::{Vec3, vec3};
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(from = "[i32; 3]", into = "[i32; 3]")]
 pub struct WorldCoord {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    x: i32,
+    y: i32,
+    z: i32,
 }
 
 #[allow(dead_code)]
@@ -22,21 +22,22 @@ impl WorldCoord {
         Self { x, y, z }
     }
 
+    pub const fn in_bounds(self) -> bool {
+        self.y >= 0 && self.y < CHUNK_HEIGHT as i32
+    }
+
     /// Returns the local position of the voxel within its chunk.
     pub const fn local_coord(self) -> VoxelCoord {
-        VoxelCoord {
-            x: self.x.rem_euclid(CHUNK_WIDTH as i32) as usize,
-            y: self.y as usize,
-            z: self.z.rem_euclid(CHUNK_WIDTH as i32) as usize,
-        }
+        let x = self.x.rem_euclid(CHUNK_WIDTH as i32) as usize;
+        let z = self.z.rem_euclid(CHUNK_WIDTH as i32) as usize;
+        VoxelCoord::new(x, self.y as usize, z)
     }
 
     /// Returns the coordinate of the chunk that contains this voxel.
     pub const fn chunk_coord(self) -> ChunkCoord {
-        ChunkCoord {
-            x: self.x.div_euclid(CHUNK_WIDTH as i32),
-            z: self.z.div_euclid(CHUNK_WIDTH as i32),
-        }
+        let x = self.x.div_euclid(CHUNK_WIDTH as i32);
+        let z = self.z.div_euclid(CHUNK_WIDTH as i32);
+        ChunkCoord::new(x, z)
     }
 
     /// Returns the position of this voxel in world space.
@@ -90,6 +91,24 @@ impl std::ops::Add for WorldCoord {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
             z: self.z + rhs.z,
+        }
+    }
+}
+
+impl std::ops::Add<Direction> for WorldCoord {
+    type Output = Self;
+
+    /// Offset the voxel coordinate by one in the given direction.
+    /// This might result in voxel coordinates that are outside the bounds.
+    fn add(self, rhs: Direction) -> Self::Output {
+        // We deliberately use `wrapping_sub` to make the value wrap around to an out of bounds value.
+        match rhs {
+            Direction::Right  => Self { x: self.x + 1, ..self },
+            Direction::Left   => Self { x: self.x - 1, ..self },
+            Direction::Top    => Self { y: self.y + 1, ..self },
+            Direction::Bottom => Self { y: self.y - 1, ..self },
+            Direction::Front  => Self { z: self.z + 1, ..self },
+            Direction::Back   => Self { z: self.z - 1, ..self },
         }
     }
 }
