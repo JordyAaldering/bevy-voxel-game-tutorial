@@ -1,4 +1,4 @@
-# Inspecting settings
+# Peeking into the world
 
 ![](img/chapter02.png)
 
@@ -53,7 +53,7 @@ The world inspector is useful, but it can be overwhelming when all we want to ch
 Instead of using `WorldInspectorPlugin`, you could use `ResourceInspectorPlugin::<CameraSettings>`.
 That gives us a dedicated window for editing only that resource.
 
-## Cursor grabbing
+### Cursor grabbing
 
 There's one problem: when we click on the inspector, the game grabs the cursor.
 We need to stop `toggle_cursor` from capturing the mouse when the click is meant for the GUI.
@@ -62,8 +62,17 @@ A quick search leads us to [`EguiWantsInput`](https://docs.rs/bevy_egui/latest/b
 Read the documentation to see how egui signals that it wants keyboard or pointer input.
 Then, in `toggle_cursor`, only grab the cursor if egui does not want the input.
 
-## Screenshots, GIFs, and states
+## Capturing screenshots
 
-This chapter is short, perhaps add the screenshotting here.
-It is interesting because it uses state control, which is really useful.
-The chapter title needs to adjust accordingly.
+If you want to easily share your progress, it is really useful to have screenshotting and recording functionality built right into the game.
+
+## Recording GIFs
+
+Interesting because it uses state control, which is really useful.
+
+### Fallible systems
+
+Another useful feature are fallible systems.
+Systems can return a result, which makes those systems ergonomic to code with [`context`](https://bevy.org/news/bevy-0-20/#bevy-error-context-messages) and the `?` operator, and allows Bevy to handle errors gracefully.
+This is useful for the new screenshotting system, which can fail if, for example, a file could not be created.
+Rather than having to `unwrap` the result, or manually handle the error, we can return a `Result` and let Bevy deal with it.

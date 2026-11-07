@@ -39,7 +39,7 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 ## Chapters
 
 1.  [Setting the scene](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Setting-the-scene)
-2.  [Inspecting settings](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Inspecting-settings)
+2.  [Peeking into the world](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Peeking-into-the-world)
 3.  [The first mesh](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/The-first-mesh)
 4.  [Creating a chunk](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Creating-a-chunk)
 5.  [Multiple chunks](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Multiple-chunks)

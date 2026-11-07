@@ -238,8 +238,3 @@ fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
 Bevy provides a cleaner solution: [run conditions](https://bevy-cheatbook.github.io/programming/run-conditions.html).
 When adding the systems, we can attach a condition that determines whether they should run using `(a, b).run_if(is_focused)`.
 Bevy then runs systems _a_ and _b_ only when the condition is satisfied, keeping their logic separate from the question of whether they should execute.
-
-## Fallible systems
-
-Another useful feature are fallible systems.
-Systems can return a result, which makes those systems ergonomic to code with [`context`](https://bevy.org/news/bevy-0-20/#bevy-error-context-messages) and the `?` operator, and allows Bevy to handle errors gracefully.
