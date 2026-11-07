@@ -22,6 +22,12 @@ impl WorldCoord {
         Self { x, y, z }
     }
 
+    pub const fn from(chunk: ChunkCoord, voxel: VoxelCoord) -> Self {
+        let x = chunk.x * CHUNK_WIDTH as i32 + voxel.x as i32;
+        let z = chunk.z * CHUNK_WIDTH as i32 + voxel.z as i32;
+        Self { x, y: voxel.y as i32, z }
+    }
+
     pub const fn in_bounds(self) -> bool {
         self.y >= 0 && self.y < CHUNK_HEIGHT as i32
     }

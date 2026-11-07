@@ -573,7 +573,7 @@ impl VoxelWorld {
     fn place_structure(&mut self, structure: &Structure, origin: WorldCoord) {
         for voxel in &structure.voxels {
             let coord = origin + voxel.pos;
-            if coord.in_bounds() {
+            if !coord.in_bounds() {
                 continue;
             }
 
