@@ -1,109 +1,97 @@
 # Breaking and placing blocks
 
-To determine where to place or destroy a block we need to determine what we are looking at.
-Typically, this is done using 'raycasts'.
-But again, because we are in our simple voxel world we can actually do this entirely mathematically.
+## Raycasting
 
-We use the 'DDA' algorithm.
-https://en.wikipedia.org/wiki/Digital_differential_analyzer_(graphics_algorithm)
+To break or place a block, we first need to know which voxel the player is looking at.
+A physics raycast would be overkill here: voxels are arranged on a regular grid, so we can traverse that grid directly using the [DDA algorithm](https://en.wikipedia.org/wiki/Digital_differential_analyzer_(graphics_algorithm)).
 
-We can use this information to determine which block we are looking at, and should break.
+Create a function that takes the world, a ray origin, a direction, and a maximum distance, and returns an optional hit.
+Start at the voxel containing the camera, found by flooring each coordinate of its position.
+For each axis, calculate the direction to step through the grid and the distance between successive voxel boundaries.
+Begin with the distance to the next boundary on each axis; repeatedly step along whichever axis has the nearest boundary, updating that axis's distance.
+At each step, query whether the new voxel is solid.
+Stop and return no hit when the next boundary is beyond the interaction distance.
 
-For debugging purposes we also add an outline to the face we are looking at.
-Gizmos are perfect for this.
+The face crossed on the final step is also important: it tells us which side of the hit voxel the ray entered.
+Include both the voxel's world coordinate and that face in the hit result.
+When the ray has a zero component on an axis, treat its next boundary distance as infinity so the traversal never steps along that axis.
 
-The DDA algorithm also tells us which face of the block we are looking at, so we can also use this same information to determine where to place a block.
+Use the camera's global position and forward direction as the ray origin and direction.
+For visual feedback, call the raycast each frame and draw the four edges of the hit face with a white gizmo.
+For interaction, respond to a newly pressed left or right mouse button: replace the hit voxel with air to break it, or put dirt in the adjacent voxel in the hit face's direction to place it.
+Put the interaction system under the same focused-controls run condition as player input, so clicks intended for egui do not edit the world.
 
 ## Refactoring
 
-Before we continue, some refactoring is in order.
-We now need to keep track of the meshes we created.
-To do this, we move the created mesh inside the Chunk struct.
-Each chunk then becomes responsible for updating its own chunk.
-This means we need to move some logic.
+Until now, a chunk's mesh was created separately from its voxel data.
+That makes it awkward to find and update the right mesh after an edit.
+Instead, give each chunk an ECS entity, and attach its `Chunk` component, transform, and render components to that entity.
+Store the entity ID in the corresponding `ChunkData`; the world can then update the voxel data and mark the right entity for remeshing.
+
+Split chunk generation from mesh generation.
+During world setup, create all chunk entities and data first, marking them as needing a mesh.
+The remeshing system can then build meshes after the neighbouring chunk data is available.
+Keep the texture-atlas layout in a resource so the mesh-building system can access it.
+
+We also want to build meshes off the main thread.
+A task cannot borrow the world while the main thread may change it, so store the chunk data as `Arc<ChunkData>`.
+A task can clone an `Arc` to retain access to a consistent snapshot without copying all the voxel data.
+When editing a chunk, use `Arc::make_mut`: it modifies the data directly if no other code is using it, and makes a copy if a mesh task still holds a reference.
 
 ## Re-meshing dirty chunks
 
-Meshes are now local to each chunk.
-Whenever a change occurs (for example, a block is placed or removed, but this could also be a tree growing), we mark that chunk as 'dirty'.
-We don't immediately update the chunk.
-Instead, we mark it as dirty, and the `World` becomes responsible for coordinating which chunks update when.
-We do this because the world can then decide when it is a good time to re-mesh and to batch multiple meshing operations together.
+Add a `NeedsRemesh` marker component to identify chunk entities whose mesh is out of date.
+Whenever a voxel changes, mark its chunk.
+If it lies on the left, right, front, or back edge, also mark the corresponding neighbouring chunk: the changed voxel may have made a face on that neighbour visible or hidden.
+There is no need to mark chunks above or below, because the chunks in this world extend through the full vertical range.
 
-However, I was not yet sure whether this still applies to ECS systems.
-It seems those might naturally expose the desired dirty-tracking.
-Time for some googling.
+When a chunk is spawned, mark it as dirty too.
+Its neighbours may also need remeshing, because a newly available chunk can hide faces that were previously rendered at their shared border.
 
-It seems we have a few alternatives.
-
-We can add a marker:
-```rust
-#[derive(Component)]
-struct NeedsRemesh;
-```
-
-Or we can make `Chunk` a `Component`, and then use Bevy's `Changed<Chunk>` feature to automatically detect changes.
-Because the latter may also respond to changes that do not relate to the mesh, and because it does not respond to changes necessary to neighbouring chunks, I don't think that is the right approach.
-However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already have an entity for the chunk: the mesh itself.
-
-Remember that, if we modify a voxel on the edge of a chunk, we also need to modify the neighbouring chunk.
+`NeedsRemesh` is a frequently added and removed marker, so configure it to use Bevy's sparse-set component storage.
+This avoids moving chunk entities between archetypes as the marker is toggled.
+Avoid using `Changed<Chunk>` as a substitute: changing voxel data in the world does not necessarily change the `Chunk` component, and a mesh can also depend on a neighbouring chunk.
 
 ### Async tasks
 
-We don't want to block the main thread while meshing chunks, which would otherwise cause stuttering.
-For this we use [async tasks](https://bevy-cheatbook.github.io/fundamentals/async-compute.html) ([example](https://bevy.org/examples/async-tasks/async-channel-pattern)).
-Async tasks run in a separate thread, which means the main game loop can continue while the mesh is being built, possibly across multiple frames.
+Use a `MeshTask` component to track chunks that are currently being meshed.
+In `PostUpdate`, chain two systems: first poll existing tasks, then start tasks for newly dirty chunks.
+Polling first means a chunk whose previous task has just finished can start another task in the same schedule run if it was marked dirty in the meantime.
 
-To setup asynchronous generation of meshes we need a few things:
+In the polling system, check each task without waiting for it to finish.
+If it is still running, leave it alone.
+When it completes, insert the mesh as a `Mesh3d` if the chunk has not been meshed before; otherwise, replace the mesh asset behind the existing handle.
+Then remove the `MeshTask` component.
 
-- A component definition containing the mesh task: `Task<Mesh>`.
-  This component is added to a chunk entity when it is marked as dirty, and removed when the task is finished.
-- A chunk may be modified while another chunk is reading it, so we need to make the world contain a hashmap of `Arc<ChunkData>` instead of `ChunkData`.
-  This allows us to hand out shared references to chunks, while still allowing the main thread to modify them.
-- A function to poll the tasks each frame, and insert the finished mesh into the assets when it is done.
-- A function that checks for dirty chunks, and spawns a task to build the mesh for each dirty chunk.
-- The task itself, which builds the mesh for a chunk.
+In the remeshing system, query for entities with `NeedsRemesh` but without `MeshTask`, so a chunk never has two mesh tasks running simultaneously.
+For each one, gather the chunk data, its four horizontal neighbours, and a clone of the atlas layout.
+Spawn a task on Bevy's async compute pool that calls `build_mesh` using only these inputs.
+Add `MeshTask` to the chunk entity and remove `NeedsRemesh` when starting the task.
 
-The pattern is as follows:
+The task receives `Arc` handles for the chunk and its neighbours.
+This lets `build_mesh` determine whether boundary faces are visible without accessing or borrowing the live world.
+If a voxel changes while the task is running, the world can add `NeedsRemesh` again.
+The active task is left alone; when it completes, its mesh is applied and its task component removed.
+The still-dirty chunk can then be meshed again using the latest data.
+This can briefly display an out-of-date mesh, but avoids losing edits or doing duplicate work.
 
-1. A chunk is modified, and marked as dirty by adding the `NeedsRemesh` component.
-2. The `remesh_chunks` system runs every frame, and finds all chunks with `NeedsRemesh`.
-   It removes the `NeedsRemesh` component, and spawns a `build_mesh` task to build the mesh for that chunk.
-   The task is stored in a `MeshTask` component on the chunk entity.
-   - The `build_mesh` task receives the data of the chunk it is going to mesh, and an `Arc` to the neighbouring chunks.
-     An `Arc` is needed because the neighbouring chunks may be modified while the task is running, and we want to ensure the task sees a consistent snapshot of the neighbouring chunks.
-3. The `build_mesh` task runs is a separate thread, and returns the generated mesh when it is done.
-4. The `poll_mesh_tasks` system runs every frame, and checks all chunks with a `MeshTask` component.
-   If the task is finished, it inserts the generated mesh into the chunk entity, and removes the `MeshTask` component.
+### An alternative: entity events
 
----
+It is worth understanding what happens when we add and remove `NeedsRemesh`.
+Bevy normally stores components in tables grouped by an entity's exact set of table components.
+This grouping is called an archetype.
+Adding or removing a table-stored component changes the entity's archetype, so Bevy has to move its table data to the appropriate storage.
+This makes table components efficient to query, but repeated structural changes can have a cost.
 
-Note that the `NeedsRemesh` component is removed when the task is spawned.
-This way, if a chunk somehow gets modified whilst its chunk it being generated, it will remain dirty after the mesh is finished, triggering another mesh generation task.
-It might be possible to cancel the task, which would avoid some unnecessary work, but the current approach is a good compromise between simplicity and performance.
+The `NeedsRemesh` marker is different from most components: it is added and removed as chunks become dirty and get scheduled for remeshing.
+By storing it in a sparse set, we avoid moving the chunk's table data every time this marker changes.
+Sparse-set storage has different query trade-offs, so it is a useful option for frequently toggled markers.
 
-A task cannot borrow the `VoxelWorld`, because the main thread keeps modifying it.
-Instead, the task gets shared handles to everything it needs: the chunk, its four neighbours (to hide faces on the chunk border), and a copy of the atlas layout.
-To make this cheap the world stores chunks as `Arc<ChunkData>`, so handing a chunk to a task only copies a pointer, not the voxels.
-When the main thread modifies a chunk it uses `Arc::make_mut`.
-This is 'copy-on-write': the voxels are only copied if a task is still reading that chunk, so the task always sees a consistent snapshot, and in the common case nothing is copied at all.
-That is also why `build_mesh` no longer takes the world, but only the neighbouring chunk data.
+Another design is to send an event or message identifying a chunk that needs remeshing, and let a system handle those requests.
+This avoids changing the chunk entity's components just to record that work is pending, and can be a natural fit when many different systems request the same operation.
+The handler still needs to account for duplicate requests, requests for chunks that have since been unloaded, and chunks that are already being meshed.
+It also needs to preserve a request if the chunk changes while a task is in flight.
 
-The process now has two steps, each its own system:
-
-1. `remesh_chunks` finds chunks marked with `NeedsRemesh`, removes the marker, and spawns a task whose result is stored in a `MeshTask` component.
-2. `poll_mesh_tasks` checks every `MeshTask` each frame without blocking (`future::poll_once`). Once a task is finished, the mesh is inserted into the assets (or replaces the existing one) and the `MeshTask` is removed.
-
-Some details follow from this:
-- A chunk is only meshed by one task at a time. If a voxel changes while its task is running, `NeedsRemesh` is added again, but `remesh_chunks` ignores chunks that still have a `MeshTask`. The finished (now slightly stale) mesh is applied, after which the chunk is meshed again with the newest data.
-- If a chunk is unloaded, its entity is despawned. This drops the `MeshTask`, which cancels the task.
-- Meshes now appear a frame or more after the change, so there can be a short delay before an edit becomes visible.
-
-### Entity events
-
-TODO: it seems that bevy has tables of entities, grouping them by their components. That means this entity moves around by adding and removing the NeedsRemesh component.
-Need to determine exactly how this works, and whether our approach is problematic.
-It might be that `EntityEvent` is a better approach: https://taintedcoders.com/bevy/events
-
-Using events has some difficulties, because we need to ensure it only happens once even if multiple sources cause a remesh, and we need to gracefully handle when a chunk is marked as dirty but is then unloaded.
-You would have to profile to be sure, but I don't think the performance hit of moving the entity to a different _archetype_ will be significant compared to the much higher cost of re-meshing.
+Neither approach is automatically faster: events add their own bookkeeping, while marker components make pending work visible directly in ECS queries.
+For this implementation, the sparse-set marker is straightforward and handles the dirty/in-flight lifecycle clearly.
+If profiling shows that it is a bottleneck, compare it with an event-based design in the actual workload.

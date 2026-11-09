@@ -73,7 +73,8 @@ We'll improve the vertical rotation by clamping it, so the player cannot look al
 To clamp the rotation, we need to decompose the camera's rotation into yaw, pitch, and roll (pitch is what we want to clamp).
 Looking at [an example](https://bevy.org/examples/camera/camera-orbit), we can achieve this with `to_euler(EulerRot::YXZ)`.
 
-(_It is unclear to me why we specifically use `EulerRot::YXZ` here, but I can't find a description. Please let me know if you know._)
+(_It is unclear to me why we specifically use `EulerRot::YXZ` here, but I can't find a description.
+Please let me know if you know._)
 
 Adjust the pitch by the mouse delta, and clamp the result by the minimum and maximum pitch.
 The pitch is in radians, so $\pi / 2$ is the pitch to look straight up.
@@ -83,21 +84,23 @@ Finally, replace the camera's rotation with a new quaternion, by inverting the d
 
 ## Survival player
 
-```rust
-fn move_survival
-```
+Add a survival movement system that reads horizontal movement keys and converts them into velocity along the player's facing direction.
+Normalize the direction to keep diagonal movement from being faster, and stop horizontal movement when no direction is pressed.
+Allow jumping only when the player is grounded, and store velocity and grounded state on the player.
 
-Nested run conditions
+Run this input system in `Update` so short-lived key presses are not missed.
+Keep it conditional on survival mode, nested under the focus condition used for player controls.
 
 ## Physics
-
-```rust
-fn player_physics
-```
 
 For physics, we need to separate player input from the physics calculation.
 We **must** run the input function every frame, because we might miss inputs.
 But the physics simulation is typically run during the `FixedUpdate` schedule.
+
+Create a fixed-update physics system that applies gravity, then moves and checks collisions along each axis separately.
+Use the player's width and height to find the voxels touched at the leading edge, query whether those voxels are solid, and resolve collisions by moving the player to the voxel boundary and clearing velocity on that axis.
+Mark the player grounded when a downward collision occurs.
+Put this system in a plugin with a run condition so physics only runs in survival mode.
 
 ### Plugins
 

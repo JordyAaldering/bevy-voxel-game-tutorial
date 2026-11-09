@@ -36,8 +36,8 @@ use bevy_inspector_egui::{
 pub const CHUNK_WIDTH: usize = 3;
 pub const CHUNK_HEIGHT: usize = 4;
 
-const ATLAS_ROWS: u32 = 4;
-const ATLAS_COLUMNS: u32 = 4;
+const ATLAS_ROWS: u32 = 10;
+const ATLAS_COLUMNS: u32 = 9;
 
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
@@ -98,12 +98,12 @@ impl VoxelType {
         match self {
             Self::Grass => {
                 match direction {
-                    Direction::Top => atlas_index(3, 1),
-                    Direction::Bottom => atlas_index(1, 0),
-                    _ => atlas_index(2, 0),
+                    Direction::Top => atlas_index(5, 1),
+                    Direction::Bottom => atlas_index(7, 5),
+                    _ => atlas_index(7, 4),
                 }
             },
-            Self::Dirt => atlas_index(1, 0),
+            Self::Dirt => atlas_index(7, 5),
             _ => unreachable!(),
         }
     }
@@ -119,6 +119,7 @@ struct Chunk {
 /// This is added when a chunk is modified, and removed when a mesh generation task is spawned.
 /// If a chunk is modified whilst its mesh is being generated, it will remain dirty and be remeshed again once the task is finished.
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsRemesh;
 
 /// Marker component for a chunk that is currently being meshed on another thread.
