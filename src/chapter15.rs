@@ -220,6 +220,7 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 
 /// Marks a chunk for a generation check when it or its neighbors change.
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsGenerationCheck;
 
 /// A chunk generation phase running on another thread. Dropping it cancels the task.

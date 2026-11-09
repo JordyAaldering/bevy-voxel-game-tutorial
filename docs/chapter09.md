@@ -1,102 +1,104 @@
-# Terrain Generation
+# Terrain generation
 
-Rather than using the old-school Perlin noise algorithm, I'll opt for the OpenSimplex2 algorithm.
-In particular, I select the OpenSimplex2S variant (https://github.com/KdotJPG/OpenSimplex2/blob/master/java/OpenSimplex2S.java).
-Instead of evaluating the BCC lattice precisely, it applies a geometric "skewing" factor to the coordinates before processing them.
-This produces slightly smoother results, but is much faster.
-Once we combine multiple noise layers, and since our world is blocky anyway, this difference should not be visible.
+So far, our chunks have been filled with simple patterns.
+Now we'll use noise to generate a continuous landscape across the world.
+The same world coordinates must always produce the same result, so the terrain stays consistent when neighboring chunks are generated at different times.
 
-## Simplex Noise
+## Noise algorithms
 
-Don't read the Wikipedia article on Simplex noise, it is not very helpful.
-However, I found this video pretty clear: https://youtu.be/DxUY42r_6Cg.
-Some things are still a little unclear, but if you can explain that video in your own words you really need all you need to know.
+Noise functions turn coordinates into smoothly changing values.
+They are useful for terrain because nearby positions receive similar values, unlike purely random values, which would produce abrupt changes from one block to the next.
 
-This is one of those cases where you can definitely skip this section and simply use a Perlin noise or Simplex crate, or whatever you would want to use.
+Perlin noise is a familiar choice, but we'll use OpenSimplex2S, the smooth variant of OpenSimplex2.
+The [OpenSimplex2 source](https://github.com/KdotJPG/OpenSimplex2) and the [OpenSimplex2S reference implementation](https://github.com/KdotJPG/OpenSimplex2/blob/master/java/OpenSimplex2S.java) are useful references.
+You can also use an existing noise crate instead of writing or adapting an implementation yourself.
 
-I'll go with OpenSimplex2S.
-It seems that it is slightly slower than OpenSimplex2, but produces slightly nicer output.
+At a high level, OpenSimplex2S works like this:
 
-https://github.com/KdotJPG/OpenSimplex2
-https://lib.rs/crates/opensimplex2
+1. Transform the sample coordinates into a skewed lattice space.
+   This lets the algorithm use a simplex-shaped tiling rather than the square grid of the input coordinates.
+2. Find the nearby lattice vertices that can contribute to the sample.
+3. Use the seed and each vertex's lattice coordinate to choose a repeatable gradient direction.
+4. For each vertex, compare its gradient with the vector from that vertex to the sample.
+   Fade contributions smoothly with distance so distant vertices have no effect.
+5. Add the contributions together to get the noise value.
 
-Basic idea:
-1. Place gradient vectors on a lattice.
-2. Find nearby lattice points.
-3. Compute gradient contributions.
-4. Blend them smoothly.
+The result is deterministic for a given seed and position, and changes smoothly as the position moves.
+The 2D form is enough for a heightmap: sample each horizontal x/z position to get a height.
+The 3D form can later be used for volumetric features such as caves.
+A 4D form is often useful when a fourth coordinate, such as time, is needed for animation, but we do not need it for this terrain.
 
-```
-sample position
- v
-locate nearby lattice vertices
- v
-generate pseudorandom gradients
- v
-weight by distance
- v
-sum contributions
- v
-noise value
-```
+If you adapt an existing implementation, focus on the dimensions and sampling interface the game needs rather than rewriting the algorithm from scratch.
+In Rust, pay attention to integer overflow in the hash: where the source relies on wraparound, use wrapping arithmetic rather than ordinary operations that can panic in debug builds.
 
-There's 2d, 3d, and 4d variants of the algorithm.
-The 2d variant is the simplest to start with, and we can use it to determine the height of the world.
-Later, once we generate caves, we can use the 3d variant.
-We likely won't need the 4d variant; its fourth dimension is typically used for time-varying effect, like cloud movement, or animations and procedural textures.
+## Visualizing noise
 
-There's very little explanation of the actual algorithm, so we'll have to make do with the source code and descriptions of the Simplex and Perlin algorithms.
-https://en.wikipedia.org/wiki/Simplex_noise
-Ultimately, they all follow a similar approach, so if we understand Simplex/Perlin we should be able to map those ideas to OpenSimplex2S.
+Before using a noise function to generate a world, it helps to see what it produces.
+The `examples/noise.rs` example samples a 2D grid, maps the noise range from `[-1, 1]` to grayscale values from `[0, 255]`, and saves the result as an image.
+Run it with `cargo run --example noise` and inspect `noise.png`.
 
----
-
-1. Transform/skew input coordinates. This essentially transforms the grid into a honeycomb pattern, making the distance between points equal.
-2. The values in the coordinate (x,y,z) are sorted in increasing order, e.g. (y,x,z). Then, ...?
-3. The vertex is hashed to determine the gradient.
-4. The contribution of each vertex of the simplex is combined. The input coordinate is subtracted to unskew the vector. The dot product then gives the gradient value. d^2 gives the squared distance to the point.
+Keeping this visualization in `examples` makes it a standalone development tool rather than part of the game.
+It can quickly reveal problems such as a flat result, unexpected repetition, or features at the wrong scale.
+If the noise code changes, regenerate the image and compare it before wiring the result into terrain.
 
 ## Testing the noise
 
-To test whether the noise function is correct, I've created a test file `examples/noise.rs`.
-We also need the `image` crate: `cargo add --dev image`.
-I deliberately use the `examples` folder.
-I don't put it in the main sources, because I don't want to ship the `image` crate with the game.
-The `tests` folder is not suitable, because it is intended for many unit and integration tests run in parallel, not for visualizing an output.
+The image is useful for visual inspection, but it does not replace automated tests.
+Add tests for important properties of the noise function, such as deterministic output for a fixed seed and position, and different output when the seed changes.
+Also test the settings and chunk-sampling helpers so their world-coordinate mapping agrees across chunk boundaries.
 
-When our editor becomes more capable, this visualization can also be moved into the game.
-That would allow us to play around with settings and visualize the results directly.
+## Tuning noise
 
-Turns out, there's a subtle difference in C# and Rust.
-In C#, the default overflow behaviour is to silently wrap the value.
-In the case of Rust, overflows will always cause a panic.
-Thus, we replace potentially overflowing and underflowing integer operations with `wrapping_add` etc.
+A single noise layer gives broad, smooth shapes.
+To add finer details, sample additional layers called _octaves_.
+Each octave uses a higher frequency and a lower amplitude than the previous one; combining them adds smaller features on top of the larger ones.
+
+The terrain settings control how the noise is sampled and scaled:
+
+- `frequency` controls the size of the features.
+Lower frequency stretches the pattern over a larger area; higher frequency makes features smaller and more frequent.
+- `octaves` controls how many noise layers are combined.
+- `persistence` is the amplitude multiplier for each successive octave.
+- `lacunarity` is the frequency multiplier for each successive octave.
+- `amplitude` scales the combined noise into a height variation.
+- `bias` shifts that variation up or down to set the approximate base height.
+- `offset` moves the sampled pattern without changing its shape.
+
+Adding more octaves costs more to evaluate, so start with a small number and add them only if the terrain benefits from the extra detail.
 
 ## Benchmarking the noise
 
-Another thing we can do is to benchmark the performance of the noise function.
-With the `criterion` crate we can conveniently test whether changes to the noise function have a negative impact on performance.
-(Though, always be aware that what works on your system might not translate, so don't waste time optimizing for few percentage changes.)
+When the noise function is in place, use Criterion to measure its performance and catch regressions when changing the implementation or adding octaves.
+Benchmark representative workloads, such as sampling a chunk-sized heightmap, rather than relying only on a single noise call.
+Treat small differences cautiously: benchmark results can vary between machines and may not reflect the cost in the full game.
 
 ## GPU implementation
 
-Is this hard with Bevy?
-Would be cool.
+Noise generation is a perfect candidate for GPU implementation.
+It parallelizes very well, and is completely separate from the game logic.
+However, executing GPU code is not trivial, so we'll save this for a later chapter, when performance becomes a concern.
 
 ## Terrain generation
 
-We can now use this `noise2` function, or whatever 2d noise function you have from your selected crate, to determine the height of each x-y coordinate in the world.
-Thus, for every world position x and y, `noise2(x, y)` gives the `z` height at that position in the world.
+Use the 2D noise as a heightmap.
+For every horizontal world position `(x, z)`, sample the noise to get the height of that column.
+It is important to use world coordinates rather than coordinates local to the chunk: otherwise, every chunk would start the same pattern again at its own origin, and the terrain would not line up at chunk boundaries.
 
-We also add another voxel type: stone.
-The topmost voxel, at z, becomes grass, the three below it become dirt, and all others below it become stone.
+The `NoiseSettings::area2` helper samples every x/z position in a chunk and returns the results in row-major order.
+The index is `x + z * CHUNK_WIDTH`, matching the order used to fill the heightmap.
+It converts the chunk coordinate to a world-space origin before sampling, so adjacent chunks sample adjacent positions.
+A single-position sample is also useful for queries such as determining the player's spawn height.
 
-We also need to make sure to spawn the player at the correct height, so they don't appear in the ground.
-In the future we might also need to check, for example, if the player does not appear inside a structure like a tree or a building, or does not spawn right above a ravine or cave.
-For now, we can just use the heightmap data.
+Put the seed and height settings in a `TerrainConfig` resource.
+A seed lets you reproduce a terrain layout while still making other worlds possible by changing one value.
+Initialize the resource when building the app and pass it to both chunk generation and player spawning.
+For example, the default settings use a base height near 20 blocks and a height variation of about 10 blocks; frequency determines how broadly those hills spread across the world.
 
-## `NoiseSettings` and `TerrainConfig`
+For each sampled column, convert the noise value to a valid voxel height and clamp it to the chunk's vertical bounds.
+Set the top voxel to grass, the two layers beneath it to dirt, and the remaining voxels below to stone.
+This gives us a simple material profile while keeping the surface shape controlled by noise.
+Add `Stone` to `VoxelType` and select its atlas tile in the texture lookup function.
 
-`NoiseSettings::area2` samples a chunk-sized heightmap in world coordinates, with
-`x + z * CHUNK_WIDTH` indexing. Chunk generation consumes the batch, while a
-single-position sample remains useful for finding the player spawn height.
+Finally, spawn the player above the terrain rather than at a fixed height.
+Sample the same height settings at the player's starting x/z position and place the player's feet one block above that surface.
+Use the same seed and settings as chunk generation so the player position matches the terrain that will be generated beneath them.

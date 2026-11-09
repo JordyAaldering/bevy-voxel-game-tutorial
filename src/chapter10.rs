@@ -145,6 +145,7 @@ struct Chunk {
 struct ChunkMaterial(Handle<StandardMaterial>);
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsRemesh;
 
 #[derive(Component)]

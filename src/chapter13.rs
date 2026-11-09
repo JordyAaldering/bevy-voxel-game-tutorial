@@ -160,6 +160,7 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 /// It is also added when the neighboring chunks progress to the next phase, meaning that this chunk
 /// may now be able to progress to the next phase as well.
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsGenerationCheck;
 
 /// A chunk generation phase running on another thread. Dropping it cancels the task.

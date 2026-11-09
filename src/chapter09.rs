@@ -140,6 +140,7 @@ struct Chunk {
 }
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsRemesh;
 
 /// A mesh that is being built on another thread. Dropping it cancels the task.
