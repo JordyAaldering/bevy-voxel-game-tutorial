@@ -53,7 +53,7 @@ const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 
 #[derive(Clone, Resource)]
 struct TerrainConfig {
-    seed: i64,
+    seed: i32,
     height: NoiseSettings,
 }
 

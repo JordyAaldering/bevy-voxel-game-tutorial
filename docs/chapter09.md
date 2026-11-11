@@ -30,6 +30,10 @@ A 4D form is often useful when a fourth coordinate, such as time, is needed for 
 
 If you adapt an existing implementation, focus on the dimensions and sampling interface the game needs rather than rewriting the algorithm from scratch.
 In Rust, pay attention to integer overflow in the hash: where the source relies on wraparound, use wrapping arithmetic rather than ordinary operations that can panic in debug builds.
+Our 2D and 3D OpenSimplex2S and Voronoi implementations use `f32` coordinates, `i32` seeds and lattice coordinates, and wrapping `u32` hashes.
+Octave seeds wrap at 32 bits. The 32-bit hash and floating-point precision produce different fields from the earlier 64-bit implementation; `f32` also loses positional precision at large coordinates.
+World configuration seeds must fit in the signed 32-bit range; older configurations outside that range need a new seed.
+Previously saved chunks retain their old terrain, so mixing them with newly generated chunks can create visible seams.
 
 ## Visualizing noise
 

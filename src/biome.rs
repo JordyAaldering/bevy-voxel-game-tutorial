@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 const SURFACE_SALT: u64 = 0x5352_4641_4345;
 const TREE_SALT: u64 = 0x5452_4545;
-const TEMPERATURE_SEED_OFFSET: i64 = 0x7E57;
-const HUMIDITY_SEED_OFFSET: i64 = 0x4801;
-const CAVE_SEED_OFFSET: i64 = 0xCA7E;
-const ORE_SEED_OFFSET: i64 = 0x0E5;
+const TEMPERATURE_SEED_OFFSET: i32 = 0x7E57;
+const HUMIDITY_SEED_OFFSET: i32 = 0x4801;
+const CAVE_SEED_OFFSET: i32 = 0xCA7E;
+const ORE_SEED_OFFSET: i32 = 0x0E5;
 
 /// Terrain generation settings of a region of the world.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub struct Caves {
 /// Settings of a single world, stored in `world.json` next to its chunks.
 #[derive(Clone, Debug, Resource, Serialize, Deserialize)]
 pub struct WorldConfig {
-    pub seed: i64,
+    pub seed: i32,
     pub climate: Climate,
     pub caves: Caves,
     pub ores: Vec<Ore>,
@@ -191,7 +191,7 @@ impl WorldConfig {
         self.ores.iter().enumerate()
             .find(|(index, ore)| {
                 // Every ore has its own seed, so their clusters do not line up
-                let seed = self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((*index as i64 + 1).wrapping_mul(0x9E37_79B9));
+                let seed = self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((*index as i32 + 1).wrapping_mul(0x9E37_79B9u32 as i32));
                 ore.contains(seed, x, y, z)
             })
             .map(|(_, ore)| ore.voxel)
@@ -283,9 +283,9 @@ impl Default for WorldConfig {
 }
 
 /// Deterministic pseudo-random value in `[0, 1)` for a column, independent of generation order.
-fn hash01(seed: i64, x: i32, z: i32, salt: u64) -> f32 {
+fn hash01(seed: i32, x: i32, z: i32, salt: u64) -> f32 {
     let position = (x as u32 as u64) << 32 | z as u32 as u64;
-    let mut h = (seed as u64) ^ salt ^ position.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let mut h = (seed as i64 as u64) ^ salt ^ position.wrapping_mul(0x9E37_79B9_7F4A_7C15);
     h ^= h >> 30;
     h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     h ^= h >> 27;

@@ -19,7 +19,7 @@ const SIZE: u32 = 512;
 #[derive(Resource)]
 struct Viewer {
     settings: NoiseSettings,
-    seed: i64,
+    seed: i32,
     image: Handle<Image>,
     texture: Option<egui::TextureId>,
     show_chunks: bool,

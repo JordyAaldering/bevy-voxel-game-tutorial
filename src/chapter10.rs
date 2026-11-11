@@ -50,7 +50,7 @@ const INTERACTION_DISTANCE: f32 = 5.0;
 
 #[derive(Resource)]
 struct TerrainConfig {
-    seed: i64,
+    seed: i32,
     height: NoiseSettings,
 }
 

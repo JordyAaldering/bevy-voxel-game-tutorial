@@ -111,6 +111,7 @@ Ores might depend on the biome, so they come after.
    The voxel types (`StoneCoal` and so on) and their textures already existed.
 3. **Expose the nearest feature point of Voronoi noise.** `voronoi::noise3` only gives a distance, but ores also need to know _which_ cell a position is in.
    `voronoi::cell3` returns the distance to the nearest feature point and a hash of the cell it belongs to, and `noise3` is now built on top of it.
+   The feature-point hash and distances use 32-bit arithmetic, so this version places ore differently from the earlier 64-bit implementation.
 4. **Place clusters with it** (`Ore::contains`).
    The position is divided by the cell size, which is `4 * cluster_size`, so cells are wide enough for their cluster to fit inside.
    The hash of the nearest cell then decides two things, each with its own salt so they are independent: whether the cell has a cluster at all (`rarity` is the probability), and how large it is, between half and the full `cluster_size`.

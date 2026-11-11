@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 
 /// Voronoi cells are this many times wider than the largest cluster radius, so clusters
 /// stay well apart and never get cut off by the edge of their cell.
-const CELL_SIZE_FACTOR: f64 = 4.0;
+const CELL_SIZE_FACTOR: f32 = 4.0;
 /// The smallest a cluster gets, as a fraction of `Ore::cluster_size`.
-const MIN_CLUSTER_FRACTION: f64 = 0.5;
+const MIN_CLUSTER_FRACTION: f32 = 0.5;
 
-const RADIUS_SALT: u64 = 0x5241_4449;
-const RARITY_SALT: u64 = 0x5241_5249;
+const RADIUS_SALT: u32 = 0x5241_4449;
+const RARITY_SALT: u32 = 0x5241_5249;
 
 /// A type of ore, which spawns in clusters inside stone.
 ///
@@ -36,30 +36,30 @@ impl Ore {
     /// Whether this ore occupies the voxel at the given world position.
     /// A pure function of the position and seed, so chunks generate independently.
     /// `seed` should differ per ore, so that clusters of different ores do not coincide.
-    pub fn contains(&self, seed: i64, x: i32, y: i32, z: i32) -> bool {
+    pub fn contains(&self, seed: i32, x: i32, y: i32, z: i32) -> bool {
         if y < self.min_height || y > self.max_height || self.cluster_size <= 0.0 {
             return false;
         }
 
-        let cell_size = self.cluster_size as f64 * CELL_SIZE_FACTOR;
-        let cell = voronoi::cell3(seed, x as f64 / cell_size, y as f64 / cell_size, z as f64 / cell_size);
+        let cell_size = self.cluster_size * CELL_SIZE_FACTOR;
+        let cell = voronoi::cell3(seed, x as f32 / cell_size, y as f32 / cell_size, z as f32 / cell_size);
 
-        if unit(cell.hash, RARITY_SALT) >= self.rarity as f64 {
+        if unit(cell.hash, RARITY_SALT) >= self.rarity {
             return false;
         }
 
         let fraction = MIN_CLUSTER_FRACTION + (1.0 - MIN_CLUSTER_FRACTION) * unit(cell.hash, RADIUS_SALT);
-        cell.distance * cell_size <= self.cluster_size as f64 * fraction
+        cell.distance * cell_size <= self.cluster_size * fraction
     }
 }
 
 /// Value in `[0, 1)` derived from a cell hash. The salt makes properties of one cell independent.
-fn unit(hash: i64, salt: u64) -> f64 {
-    let mut h = hash as u64 ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    h ^= h >> 30;
-    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    h ^= h >> 27;
-    h = h.wrapping_mul(0x94D0_49BB_1331_11EB);
-    h ^= h >> 31;
-    (h >> 40) as f64 / (1u64 << 24) as f64
+fn unit(hash: u32, salt: u32) -> f32 {
+    let mut h = hash ^ salt.wrapping_mul(0x9e37_79b9);
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x7feb_352d);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x846c_a68b);
+    h ^= h >> 16;
+    (h >> 8) as f32 / (1u32 << 24) as f32
 }

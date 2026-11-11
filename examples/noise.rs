@@ -11,8 +11,8 @@ fn main() {
 
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
-            let nx = x as f64 / 100.0;
-            let ny = y as f64 / 100.0;
+            let nx = x as f32 / 100.0;
+            let ny = y as f32 / 100.0;
 
             let value = opensimplex2s::noise2(0, nx, ny);
 
