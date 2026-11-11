@@ -212,6 +212,22 @@ impl VoxelType {
     fn is_solid(self) -> bool {
         !matches!(self, VoxelType::Air)
     }
+
+    fn is_terrain(self) -> bool {
+        match self {
+            Self::Grass |
+            Self::Dirt |
+            Self::Stone |
+            Self::StoneCoal |
+            Self::StoneIron |
+            Self::StoneGold |
+            Self::StoneDiamond |
+            Self::Sand |
+            Self::Snow |
+            Self::Ice => true,
+            _ => false,
+        }
+    }
 }
 
 /// ECS component of a chunk.
