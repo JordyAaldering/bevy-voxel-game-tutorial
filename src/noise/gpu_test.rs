@@ -23,7 +23,9 @@ fn noise_cpu_matches_gpu() {
                 ..default()
             })
             .disable::<WinitPlugin>(),
-        NoisePlugin,
+        GpuPlugin {
+            mode: Mode::Auto,
+        },
     ));
 
     while app.plugins_state() == PluginsState::Adding {

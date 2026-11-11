@@ -622,7 +622,7 @@ fn main() -> AppExit {
             PhysicsPlugin::new(is_gamemode_survival),
             TelemetryPlugin,
             EditorPlugin,
-            noise::gpu::NoisePlugin,
+            noise::gpu::GpuPlugin::default(),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()

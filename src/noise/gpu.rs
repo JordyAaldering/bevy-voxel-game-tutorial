@@ -3,6 +3,7 @@ use super::{NoiseGenerationTask, NoiseSettings, NoiseType, opensimplex2s};
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH};
 
 use std::{collections::VecDeque, sync::{Arc, Mutex, mpsc}, time::{Duration, Instant}};
+use better_default::Default;
 use bevy::{
     prelude::*,
     render::{
@@ -25,25 +26,7 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
 #[path = "gpu_test.rs"]
-mod tests;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode { Auto, Cpu, Gpu }
-
-impl Mode {
-    fn from_env() -> Result<Self, String> {
-        match std::env::var("BEVY_VOXEL_NOISE_BACKEND") {
-            Ok(value) => match value.as_str() {
-                "auto" => Ok(Self::Auto),
-                "cpu" => Ok(Self::Cpu),
-                "gpu" => Ok(Self::Gpu),
-                _ => Err(format!("invalid BEVY_VOXEL_NOISE_BACKEND {value:?}; expected auto, cpu, or gpu")),
-            },
-            Err(std::env::VarError::NotPresent) => Ok(Self::Auto),
-            Err(error) => Err(format!("invalid BEVY_VOXEL_NOISE_BACKEND: {error}")),
-        }
-    }
-}
+mod gpu_test;
 
 #[derive(Resource, Clone, Default)]
 struct PipelineBridge(Arc<Mutex<PipelineState>>);
@@ -54,16 +37,39 @@ struct PipelineState {
     result: Option<Result<ComputePipeline, String>>,
 }
 
-pub struct NoisePlugin;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Auto,
+    Gpu,
+    Cpu,
+}
 
-impl Plugin for NoisePlugin {
+#[derive(Default)]
+pub struct GpuPlugin {
+    #[default(Mode::Auto)]
+    pub mode: Mode,
+}
+
+#[derive(Resource)]
+struct GpuConfig {
+    mode: Mode,
+}
+
+impl Plugin for GpuPlugin {
     fn build(&self, app: &mut App) {
         let bridge = PipelineBridge::default();
+
         app.insert_resource(bridge.clone())
+            .insert_resource(GpuConfig {
+                mode: self.mode,
+            })
             .add_systems(Startup, initialize)
             .add_systems(Update, poll);
+
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-            render_app.insert_resource(bridge).add_systems(Render, compile_pipeline);
+            render_app
+                .insert_resource(bridge)
+                .add_systems(Render, compile_pipeline);
         }
     }
 }
@@ -171,21 +177,31 @@ impl NoiseBackend {
 }
 
 fn initialize(
-    mut commands: Commands, device: Option<Res<RenderDevice>>, queue: Option<Res<RenderQueue>>,
-    adapter: Option<Res<RenderAdapterInfo>>, mut shaders: ResMut<Assets<Shader>>, bridge: Res<PipelineBridge>,
+    mut commands: Commands,
+    config: Res<GpuConfig>,
+    device: Option<Res<RenderDevice>>,
+    queue: Option<Res<RenderQueue>>,
+    adapter: Option<Res<RenderAdapterInfo>>,
+    bridge: Res<PipelineBridge>,
+    mut shaders: ResMut<Assets<Shader>>,
 ) {
-    let mode = Mode::from_env().unwrap_or_else(|error| panic!("{error}"));
-    let mut backend = NoiseBackend { mode, gpu: None, queued: VecDeque::new(), failed: None };
-    if mode != Mode::Cpu {
+    let mut backend = NoiseBackend {
+        mode: config.mode,
+        gpu: None,
+        queued: VecDeque::new(),
+        failed: None,
+    };
+
+    if config.mode != Mode::Cpu {
         match (device, queue, adapter) {
-            (Some(_), Some(_), Some(adapter)) if mode == Mode::Auto && adapter.device_type == wgpu::DeviceType::Cpu => {
+            (Some(_), Some(_), Some(adapter)) if config.mode == Mode::Auto && adapter.device_type == wgpu::DeviceType::Cpu => {
                 info!("Noise generation uses CPU: software adapter");
                 backend.mode = Mode::Cpu;
             }
             (Some(device), Some(queue), Some(_)) => {
                 let limits = device.limits();
                 if limits.max_compute_invocations_per_workgroup < 64 || limits.max_compute_workgroup_size_x < 64 || limits.max_storage_buffers_per_shader_stage < 2 {
-                    if mode == Mode::Gpu { panic!("GPU noise: insufficient compute capabilities"); }
+                    if config.mode == Mode::Gpu { panic!("GPU noise: insufficient compute capabilities"); }
                     error!("GPU noise unavailable: insufficient compute capabilities; using CPU");
                     backend.mode = Mode::Cpu;
                 } else {
@@ -198,10 +214,11 @@ fn initialize(
                     backend.gpu = Some(Gpu { device: device.clone(), queue: queue.clone(), pipeline: None, started: Instant::now(), jobs: Vec::new() });
                 }
             }
-            _ if mode == Mode::Gpu => panic!("GPU noise: render device is unavailable"),
+            _ if config.mode == Mode::Gpu => panic!("GPU noise: render device is unavailable"),
             _ => { error!("GPU noise unavailable: no render device; using CPU"); backend.mode = Mode::Cpu; }
         }
     }
+
     commands.insert_resource(backend);
 }
 
