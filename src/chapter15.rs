@@ -903,7 +903,7 @@ fn start_chunk_generation_tasks(
             ChunkGenerationPhase::HeightGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
-                info!("Generating {:?} for chunk {}", phase, chunk.coord);
+                trace!("Generating {:?} for chunk {}", phase, chunk.coord);
                 pool.spawn(async move {
                     let mut generated = Box::new((*data).clone());
                     match phase {
@@ -918,7 +918,7 @@ fn start_chunk_generation_tasks(
                 let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
                 let atlas = Arc::clone(&atlas.0);
                 let coord = chunk.coord;
-                info!("Generating mesh for chunk {}", coord);
+                trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
                     ChunkGenerationResult::Mesh(build_mesh(&data, coord, &neighbors, &atlas))
                 })

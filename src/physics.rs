@@ -1,8 +1,4 @@
-use crate::{
-    coords::{Axis, WorldCoord},
-    Player,
-    VoxelWorld,
-};
+use crate::{Player, VoxelType, VoxelWorld, coords::{Axis, WorldCoord}};
 
 use std::marker::PhantomData;
 
@@ -123,7 +119,7 @@ fn move_axis(
     for z in z_range {
         for y in y_range.clone() {
             for x in x_range.clone() {
-                if !world.is_solid(WorldCoord::new(x, y, z)) {
+                if !blocks_movement(world, WorldCoord::new(x, y, z)) {
                     continue;
                 }
 
@@ -145,4 +141,8 @@ fn move_axis(
             }
         }
     }
+}
+
+fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
+    world.get_voxel(pos).is_none_or(VoxelType::is_solid)
 }

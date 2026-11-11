@@ -101,6 +101,9 @@ Create a fixed-update physics system that applies gravity, then moves and checks
 Use the player's width and height to find the voxels touched at the leading edge, query whether those voxels are solid, and resolve collisions by moving the player to the voxel boundary and clearing velocity on that axis.
 Mark the player grounded when a downward collision occurs.
 Put this system in a plugin with a run condition so physics only runs in survival mode.
+For streamed terrain, treat voxels in chunks whose data is not ready as solid for movement, rather than as air; otherwise gravity can pull the player through chunks while they load.
+Keep this separate from raycasting, where an unavailable voxel should not become an interactable block.
+The bottom of the world also blocks movement, while space above it remains open.
 
 ### Plugins
 

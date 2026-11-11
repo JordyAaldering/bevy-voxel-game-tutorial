@@ -731,7 +731,7 @@ fn start_chunk_generation_tasks(
                 let data = Arc::clone(data);
                 let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
                 let atlas = atlas.0.clone();
-                info!("Generating mesh for chunk {}", chunk.coord);
+                trace!("Generating mesh for chunk {}", chunk.coord);
                 pool.spawn(async move {
                     ChunkGenerationResult::Mesh(build_mesh(&data, &neighbors, &atlas))
                 })

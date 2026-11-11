@@ -1030,7 +1030,7 @@ fn start_chunk_generation_tasks(
                     ChunkGenerationPhase::CaveGeneration => vec![noise_backend.area3(config.caves.noise, config.cave_seed(), chunk.coord.x, chunk.coord.z)],
                     _ => Vec::new(),
                 };
-                info!("Generating {:?} for chunk {}", phase, chunk.coord);
+                trace!("Generating {:?} for chunk {}", phase, chunk.coord);
                 pool.spawn(async move {
                     let mut generated = Box::new((*data).clone());
                     let mut maps = Vec::with_capacity(noise_tasks.len());
@@ -1052,7 +1052,7 @@ fn start_chunk_generation_tasks(
             ChunkGenerationPhase::GenerateStructures => {
                 let coord = chunk.coord;
                 let config = config.clone();
-                info!("Generating structures for chunk {}", coord);
+                trace!("Generating structures for chunk {}", coord);
                 pool.spawn(async move {
                     ChunkGenerationResult::Structures(generate_structures(coord, &config))
                 })
@@ -1062,7 +1062,7 @@ fn start_chunk_generation_tasks(
                 let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
                 let atlas = Arc::clone(&atlas.0);
                 let coord = chunk.coord;
-                info!("Generating mesh for chunk {}", coord);
+                trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
                     ChunkGenerationResult::Mesh(build_mesh(&data, coord, &neighbors, &atlas))
                 })
