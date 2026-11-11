@@ -240,6 +240,7 @@ enum ChunkGenerationResult {
 }
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsDespawn;
 
 /// Event triggered when the voxel data of a chunk has changed, requiring a remesh.

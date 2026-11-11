@@ -163,6 +163,7 @@ struct NeedsRemesh;
 struct MeshTask(Task<Mesh>);
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsDespawn;
 
 #[derive(Clone)]

@@ -149,6 +149,7 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 struct NeedsRemesh;
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 struct NeedsDespawn;
 
 /// A mesh that is being built on another thread. Dropping it cancels the task.
