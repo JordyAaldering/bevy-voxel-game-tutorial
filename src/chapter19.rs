@@ -910,8 +910,9 @@ fn build_mesh(
     chunk_pos: ChunkCoord,
     neighbors: &ChunkNeighbors,
     atlas: &VoxelAtlas,
-) -> Mesh {
-    let mut mesh_data = MeshData::new(atlas.layout());
+) -> (Mesh, Mesh) {
+    let mut voxel_mesh = MeshData::new(atlas.layout());
+    let mut terrain_mesh = MeshData::new(atlas.layout());
 
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| *v != VoxelType::Air)
@@ -920,12 +921,17 @@ fn build_mesh(
             if is_face_visible(neighbors, chunk, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
-                mesh_data.add_quad(direction, origin, texture);
+
+                if voxel.is_terrain() {
+                    // TODO
+                } else {
+                    voxel_mesh.add_quad(direction, origin, texture);
+                }
             }
         }
     }
 
-    mesh_data.build()
+    (voxel_mesh.build(), terrain_mesh.build())
 }
 
 /// Deterministic per-position hash, so a voxel keeps its variant when remeshed or reloaded.
@@ -1092,7 +1098,9 @@ fn start_chunk_generation_tasks(
         commands.entity(entity).remove::<NeedsGenerationCheck>();
 
         let task = match phase {
-            ChunkGenerationPhase::HeightGeneration | ChunkGenerationPhase::OreGeneration | ChunkGenerationPhase::CaveGeneration => {
+            ChunkGenerationPhase::HeightGeneration |
+            ChunkGenerationPhase::OreGeneration |
+            ChunkGenerationPhase::CaveGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
                 let noise_tasks: Vec<_> = match phase {
@@ -1129,21 +1137,16 @@ fn start_chunk_generation_tasks(
                     ChunkGenerationResult::Structures(generate_structures(coord, &config))
                 })
             }
-            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
+            ChunkGenerationPhase::MeshGeneration |
+            ChunkGenerationPhase::Done => {
                 let data = Arc::clone(data);
                 let neighbors = ChunkNeighbors::from(chunk.coord, &world.chunks);
                 let atlas = Arc::clone(&atlas.0);
                 let coord = chunk.coord;
                 trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
-                    ChunkGenerationResult::Mesh {
-                        voxels: build_mesh(&data, coord, &neighbors, &atlas),
-                        terrain: Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, bevy::asset::RenderAssetUsages::default())
-                            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<Vec3>::new())
-                            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<Vec3>::new())
-                            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<Vec2>::new())
-                            .with_inserted_indices(bevy::mesh::Indices::U32(vec![])),
-                    }
+                    let (voxels, terrain) = build_mesh(&data, coord, &neighbors, &atlas);
+                    ChunkGenerationResult::Mesh { voxels, terrain }
                 })
             }
         };
