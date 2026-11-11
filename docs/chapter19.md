@@ -1,4 +1,4 @@
-# Towards a smooth terrain
+# Marching cubes
 
 A terrain of voxels is not very pretty.
 We can smooth it out by changing the way we generate meshes.
