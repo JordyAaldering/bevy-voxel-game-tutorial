@@ -220,6 +220,18 @@ struct Chunk {
     coord: ChunkCoord,
 }
 
+#[derive(Component)]
+struct ChunkMeshes {
+    voxels: Entity,
+    terrain: Entity,
+}
+
+#[derive(Component)]
+struct VoxelMesh;
+
+#[derive(Component)]
+struct TerrainMesh;
+
 #[derive(Resource)]
 struct ChunkMaterial(Handle<StandardMaterial>);
 
@@ -235,7 +247,10 @@ struct ChunkGenerationTask(Task<ChunkGenerationResult>);
 enum ChunkGenerationResult {
     Data(ChunkGenerationPhase, Box<ChunkData>),
     Structures(Vec<WorldCoord>),
-    Mesh(Mesh),
+    Mesh {
+        voxels: Mesh,
+        terrain: Mesh,
+    },
     Error(String),
 }
 
@@ -312,6 +327,8 @@ impl NeighborRequirement {
 pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    /// Density of each voxel, used for marching cubes. 0 is empty, 1 is solid.
+    density: [f32; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[wincode(skip)]
     entity: Option<Entity>,
     generation_phase: ChunkGenerationPhase,
@@ -322,6 +339,7 @@ impl ChunkData {
         Self {
             coord,
             voxels: [VoxelType::Air; _],
+            density: [0.0; _],
             entity: Some(entity),
             generation_phase: ChunkGenerationPhase::HeightGeneration,
         }
@@ -481,11 +499,14 @@ impl VoxelWorld {
 
     /// Spawns an entity for the chunk at `coord`, creating data if it does not exist.
     fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
-        let entity = commands.spawn((
-            Name::new(format!("Chunk {coord}")),
-            Transform::from_translation(coord.position()),
-            Chunk { coord },
-        )).id();
+        let entity = commands
+            .spawn((
+                Chunk { coord },
+                Name::new(format!("Chunk {coord}")),
+                Transform::from_translation(coord.position()),
+                InheritedVisibility::default(),
+            ))
+            .id();
 
         if let Some(chunk) = self.chunks.get_mut(&coord) {
             Arc::make_mut(chunk).set_entity(entity);
@@ -573,7 +594,7 @@ impl VoxelWorld {
     /// This triggers the chunk to advance to the next generation phase, if applicable.
     fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
         if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity) {
-            info!("Notifying chunk {} of voxel data change", coord);
+            trace!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
     }
@@ -757,7 +778,6 @@ fn setup_chunk_material(
 fn spawn_chunks_around_player(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
-    material: Res<ChunkMaterial>,
     player: Single<&Transform, With<Player>>,
 ) {
     let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
@@ -770,8 +790,7 @@ fn spawn_chunks_around_player(
                 continue;
             }
 
-            let entity = world.spawn_chunk(&mut commands, coord);
-            commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
+            world.spawn_chunk(&mut commands, coord);
         }
     }
 }
@@ -940,9 +959,12 @@ fn poll_chunk_generation_tasks(
     mut world: ResMut<VoxelWorld>,
     mut meshes: ResMut<Assets<Mesh>>,
     structures: Res<Structures>,
-    mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&Mesh3d>)>,
+    mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&ChunkMeshes>)>,
+    voxel_meshes: Query<&Mesh3d, With<VoxelMesh>>,
+    terrain_meshes: Query<&Mesh3d, With<TerrainMesh>>,
+    material: Res<ChunkMaterial>,
 ) -> Result<(), BevyError> {
-    for (entity, chunk, mut task, mesh3d) in &mut tasks {
+    for (entity, chunk, mut task, chunk_meshes) in &mut tasks {
         let Some(result) = block_on(future::poll_once(&mut task.0)) else {
             continue;
         };
@@ -971,13 +993,31 @@ fn poll_chunk_generation_tasks(
                 world.notify_chunk(&mut commands, chunk.coord);
                 world.notify_neighbors(&mut commands, chunk.coord);
             }
-            ChunkGenerationResult::Mesh(mesh) => {
-                match mesh3d {
+            ChunkGenerationResult::Mesh { voxels, terrain } => {
+                match chunk_meshes {
                     Some(handle) => {
-                        meshes.insert(&handle.0, mesh)?;
+                        let voxel_handle = &voxel_meshes.get(handle.voxels)?.0;
+                        meshes.insert(voxel_handle, voxels)?;
+
+                        let terrain_handle = &terrain_meshes.get(handle.terrain)?.0;
+                        meshes.insert(terrain_handle, terrain)?;
                     }
                     None => {
-                        commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                        let voxels = commands.spawn((
+                            VoxelMesh,
+                            Name::new("Voxels mesh"),
+                            Mesh3d(meshes.add(voxels)),
+                            MeshMaterial3d(material.0.clone()),
+                            ChildOf(entity),
+                        )).id();
+                        let terrain = commands.spawn((
+                            TerrainMesh,
+                            Name::new("Terrain mesh"),
+                            Mesh3d(meshes.add(terrain)),
+                            MeshMaterial3d(material.0.clone()),
+                            ChildOf(entity),
+                        )).id();
+                        commands.entity(entity).insert(ChunkMeshes { voxels, terrain });
                     }
                 }
 
@@ -1064,7 +1104,14 @@ fn start_chunk_generation_tasks(
                 let coord = chunk.coord;
                 trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
-                    ChunkGenerationResult::Mesh(build_mesh(&data, coord, &neighbors, &atlas))
+                    ChunkGenerationResult::Mesh {
+                        voxels: build_mesh(&data, coord, &neighbors, &atlas),
+                        terrain: Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, bevy::asset::RenderAssetUsages::default())
+                            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<Vec3>::new())
+                            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<Vec3>::new())
+                            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<Vec2>::new())
+                            .with_inserted_indices(bevy::mesh::Indices::U32(vec![])),
+                    }
                 })
             }
         };
