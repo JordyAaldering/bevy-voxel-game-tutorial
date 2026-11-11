@@ -804,13 +804,20 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
             let column = &columns[x + z * CHUNK_WIDTH];
             let height = column.height;
 
-            chunk[VoxelCoord::new(x, height, z)] = column.surface;
+            let pos = VoxelCoord::new(x, height, z);
+            chunk[pos] = column.surface;
+            chunk.density[pos.index()] = 1.0;
+
             for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
-                chunk[VoxelCoord::new(x, y, z)] = column.subsurface;
+                let pos = VoxelCoord::new(x, y, z);
+                chunk[pos] = column.subsurface;
+                chunk.density[pos.index()] = 1.0;
             }
-            // Below that is stone
+
             for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
-                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
+                let pos = VoxelCoord::new(x, y, z);
+                chunk[pos] = VoxelType::Stone;
+                chunk.density[pos.index()] = 1.0;
             }
         }
     }
@@ -828,6 +835,7 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
                 let pos = VoxelCoord::new(x, y, z);
                 if noise[pos.index()] > config.caves.threshold {
                     chunk[pos] = VoxelType::Air;
+                    chunk.density[pos.index()] = 0.0;
                 }
             }
         }
@@ -843,10 +851,16 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
                 if chunk[coord] != VoxelType::Stone {
                     continue;
                 }
-                if let Some(ore) = config.ores.iter().zip(maps).find_map(|(ore, map)| {
+
+                if let Some(ore) = config.ores
+                    .iter()
+                    .zip(maps)
+                    .find_map(|(ore, map)|
+                {
                     ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
                 }) {
                     chunk[coord] = ore;
+                    chunk.density[coord.index()] = 1.0;
                 }
             }
         }
@@ -855,6 +869,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
 
 fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoord> {
     let columns = config.columns(coord);
+
     let mut origins = Vec::new();
     for z in 0..CHUNK_WIDTH {
         let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
@@ -870,6 +885,7 @@ fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoor
             }
         }
     }
+
     origins
 }
 
