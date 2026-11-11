@@ -3,10 +3,10 @@ use super::Compass;
 use crate::CHUNK_WIDTH;
 
 use bevy::math::{Vec3, vec3};
-use wincode::{SchemaRead, SchemaWrite};
 
 /// Coordinate of a chunk in the world.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SchemaWrite, SchemaRead)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 pub struct ChunkCoord {
     pub x: i32,
     pub z: i32,

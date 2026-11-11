@@ -1,6 +1,7 @@
 mod chunk_neighbors;
 mod biome;
 mod coords;
+mod density;
 mod editor;
 mod meshdata;
 mod noise;
@@ -16,6 +17,7 @@ use crate::{
     biome::WorldConfig,
     chunk_neighbors::ChunkNeighbors,
     coords::*,
+    density::Density,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
     physics::PhysicsPlugin,
@@ -345,7 +347,7 @@ pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     /// Density of each voxel, used for marching cubes. 0 is empty, 1 is solid.
-    density: [f32; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    density: [Density; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[wincode(skip)]
     entity: Option<Entity>,
     generation_phase: ChunkGenerationPhase,
@@ -356,7 +358,7 @@ impl ChunkData {
         Self {
             coord,
             voxels: [VoxelType::Air; _],
-            density: [0.0; _],
+            density: [Density::EMPTY; _],
             entity: Some(entity),
             generation_phase: ChunkGenerationPhase::HeightGeneration,
         }
@@ -563,7 +565,7 @@ impl VoxelWorld {
 
         let chunk = Arc::make_mut(chunk);
         chunk[voxel_pos] = voxel;
-        chunk.density[voxel_pos.index()] = if voxel.is_terrain() { 1.0 } else { 0.0 };
+        chunk.density[voxel_pos.index()] = if voxel.is_terrain() { Density::FULL } else { Density::EMPTY };
 
         self.notify_chunk(commands, chunk_pos);
 
@@ -612,7 +614,7 @@ impl VoxelWorld {
             let chunk = Arc::make_mut(chunk);
             let local = coord.local_coord();
             chunk[local] = voxel.voxel;
-            chunk.density[local.index()] = if voxel.voxel.is_terrain() { 1.0 } else { 0.0 };
+            chunk.density[local.index()] = if voxel.voxel.is_terrain() { Density::FULL } else { Density::EMPTY };
         }
     }
 
@@ -832,18 +834,18 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
 
             let pos = VoxelCoord::new(x, height, z);
             chunk[pos] = column.surface;
-            chunk.density[pos.index()] = 1.0;
+            chunk.density[pos.index()] = Density::FULL;
 
             for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = column.subsurface;
-                chunk.density[pos.index()] = 1.0;
+                chunk.density[pos.index()] = Density::FULL;
             }
 
             for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = VoxelType::Stone;
-                chunk.density[pos.index()] = 1.0;
+                chunk.density[pos.index()] = Density::FULL;
             }
         }
     }
@@ -861,7 +863,7 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
                 let pos = VoxelCoord::new(x, y, z);
                 if noise[pos.index()] > config.caves.threshold {
                     chunk[pos] = VoxelType::Air;
-                    chunk.density[pos.index()] = 0.0;
+                    chunk.density[pos.index()] = Density::EMPTY;
                 }
             }
         }
@@ -886,7 +888,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
                     ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
                 }) {
                     chunk[coord] = ore;
-                    chunk.density[coord.index()] = 1.0;
+                    chunk.density[coord.index()] = Density::FULL;
                 }
             }
         }
@@ -941,7 +943,7 @@ fn build_voxel_mesh(
 #[derive(Clone, Copy)]
 struct TerrainSample {
     position: Vec3,
-    density: f32,
+    density: Density,
     voxel: VoxelType,
     variant_seed: u32,
 }
@@ -1001,7 +1003,12 @@ fn terrain_cell_corners(
         let z = origin.z + dz;
         let position = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
         if y == CHUNK_HEIGHT {
-            TerrainSample { position, density: 0.0, voxel: VoxelType::Air, variant_seed: 0 }
+            TerrainSample {
+                position,
+                density: Density::EMPTY,
+                voxel: VoxelType::Air,
+                variant_seed: 0,
+            }
         } else {
             let source = match (x == CHUNK_WIDTH, z == CHUNK_WIDTH) {
                 (false, false) => chunk,

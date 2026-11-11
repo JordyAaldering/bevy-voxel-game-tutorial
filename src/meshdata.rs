@@ -1,4 +1,4 @@
-use crate::Direction;
+use crate::{Direction, density::Density};
 
 use std::mem;
 
@@ -58,10 +58,9 @@ impl<'a> MeshData<'a> {
     /// `texture` resolves the material of a solid corner for a face direction.
     pub fn add_marching_cube(
         &mut self,
-        corners: [(Vec3, f32); 8],
+        corners: [(Vec3, Density); 8],
         texture: impl Fn(usize, Direction) -> usize,
     ) {
-        const ISO: f32 = 0.5;
         const EDGES: [(usize, usize); 12] = [
             (0, 1), (1, 2), (2, 3), (3, 0),
             (4, 5), (5, 6), (6, 7), (7, 4),
@@ -76,7 +75,7 @@ impl<'a> MeshData<'a> {
             ([0, 3, 7, 4], [3, 11, 7, 8]),
             ([1, 2, 6, 5], [1, 10, 5, 9]),
         ];
-        let solid = corners.map(|(_, density)| density >= ISO);
+        let solid = corners.map(|(_, density)| density != Density::EMPTY);
         if solid.iter().all(|&value| value) || solid.iter().all(|&value| !value) {
             return;
         }
@@ -84,7 +83,9 @@ impl<'a> MeshData<'a> {
         let mut links = [[usize::MAX; 2]; 12];
         for (i, &(a, b)) in EDGES.iter().enumerate() {
             if solid[a] != solid[b] {
-                let t = (ISO - corners[a].1) / (corners[b].1 - corners[a].1);
+                let da: f32 = corners[a].1.into();
+                let db: f32 = corners[b].1.into();
+                let t = (0.5 - da) / (db - da);
                 points[i] = corners[a].0.lerp(corners[b].0, t);
             }
         }
@@ -149,7 +150,7 @@ impl<'a> MeshData<'a> {
                     })
                     .expect("A surface has a solid corner");
                 let p = (centroid - corners[0].0) / (corners[6].0 - corners[0].0);
-                let d = corners.map(|(_, density)| density);
+                let d: [f32; 8] = corners.map(|(_, density)| density.into());
                 let gradient = vec3(
                     (d[1] - d[0]) * (1.0 - p.y) * (1.0 - p.z)
                         + (d[2] - d[3]) * (1.0 - p.y) * p.z
