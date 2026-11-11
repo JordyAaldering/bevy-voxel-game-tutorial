@@ -42,6 +42,22 @@ impl<'a> MeshData<'a> {
         self.normals.extend(quad_normals(direction));
         self.uvs.extend(quad_uvs(self.atlas, texture));
     }
+
+    /// Appends a triangle with mesh-local positions and atlas-space UVs.
+    #[allow(dead_code)]
+    pub fn add_triangle(&mut self, vertices: [Vec3; 3], normals: [Vec3; 3], uvs: [Vec2; 3]) {
+        let start = self.vertices.len() as u32;
+        self.indices.extend([start, start + 1, start + 2]);
+        self.vertices.extend(vertices);
+        self.normals.extend(normals);
+        self.uvs.extend(uvs);
+    }
+
+    /// Polygonizes a cell's mesh-local corner positions and densities.
+    /// Texture selection and UV mapping are still to be determined.
+    #[allow(dead_code)]
+    pub fn add_marching_cube(&mut self, _corners: [(Vec3, f32); 8]) {
+    }
 }
 
 /// Returns the four vertices of the quad.

@@ -905,14 +905,13 @@ fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoor
     origins
 }
 
-fn build_mesh(
+fn build_voxel_mesh(
     chunk: &ChunkData,
     chunk_pos: ChunkCoord,
     neighbors: &ChunkNeighbors,
     atlas: &VoxelAtlas,
-) -> (Mesh, Mesh) {
+) -> Mesh {
     let mut voxel_mesh = MeshData::new(atlas.layout());
-    let mut terrain_mesh = MeshData::new(atlas.layout());
 
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| *v != VoxelType::Air)
@@ -921,17 +920,26 @@ fn build_mesh(
             if is_face_visible(neighbors, chunk, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
-
-                if voxel.is_terrain() {
-                    // TODO
-                } else {
-                    voxel_mesh.add_quad(direction, origin, texture);
-                }
+                voxel_mesh.add_quad(direction, origin, texture);
             }
         }
     }
 
-    (voxel_mesh.build(), terrain_mesh.build())
+    voxel_mesh.build()
+}
+
+fn build_terrain_mesh(
+    chunk: &ChunkData,
+    chunk_pos: ChunkCoord,
+    neighbors: &ChunkNeighbors,
+    atlas: &VoxelAtlas,
+) -> Mesh {
+    let mut terrain_mesh = MeshData::new(atlas.layout());
+
+    // TODO: Sample marching-cube cells from this chunk and its neighbors, and
+    // choose terrain textures before adding their geometry to terrain_mesh.
+
+    terrain_mesh.build()
 }
 
 /// Deterministic per-position hash, so a voxel keeps its variant when remeshed or reloaded.
@@ -957,7 +965,7 @@ fn is_face_visible(
     }
 
     // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
-    let Ok(compass) = direction.try_into() else {
+    let Ok(compass) = TryInto::<Compass>::try_into(direction) else {
         return direction == Direction::Top;
     };
 
@@ -1145,8 +1153,10 @@ fn start_chunk_generation_tasks(
                 let coord = chunk.coord;
                 trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
-                    let (voxels, terrain) = build_mesh(&data, coord, &neighbors, &atlas);
-                    ChunkGenerationResult::Mesh { voxels, terrain }
+                    ChunkGenerationResult::Mesh {
+                        voxels: build_voxel_mesh(&data, coord, &neighbors, &atlas),
+                        terrain: build_terrain_mesh(&data, coord, &neighbors, &atlas),
+                    }
                 })
             }
         };
