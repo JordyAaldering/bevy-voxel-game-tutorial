@@ -999,7 +999,7 @@ fn start_chunk_generation_tasks(
     world: Res<VoxelWorld>,
     config: Res<WorldConfig>,
     atlas: Res<SharedVoxelAtlas>,
-    mut noise_backend: ResMut<noise::gpu::NoiseBackend>,
+    mut noise_backend: ResMut<noise::gpu::GpuBackend>,
     chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();

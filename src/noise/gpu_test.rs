@@ -37,7 +37,7 @@ fn noise_cpu_matches_gpu() {
     app.update();
 
     assert!(
-        app.world().resource::<NoiseBackend>().gpu.is_some(),
+        app.world().resource::<GpuBackend>().gpu.is_some(),
         "GPU noise unavailable; run with a compatible adapter and BEVY_VOXEL_NOISE_BACKEND=auto or gpu"
     );
 
@@ -61,7 +61,7 @@ fn noise_cpu_matches_gpu() {
             };
 
             let task = app.world_mut()
-                .resource_mut::<NoiseBackend>()
+                .resource_mut::<GpuBackend>()
                 .area3(settings, seed, x, z);
             requests.push((settings, seed, (x, z), task));
         }
@@ -76,7 +76,7 @@ fn noise_cpu_matches_gpu() {
     }
 
     assert!(
-        app.world().resource::<NoiseBackend>().gpu.is_some(),
+        app.world().resource::<GpuBackend>().gpu.is_some(),
         "GPU noise failed or fell back to the CPU"
     );
 
