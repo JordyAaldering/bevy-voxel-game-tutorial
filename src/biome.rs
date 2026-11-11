@@ -180,21 +180,12 @@ impl WorldConfig {
         }
     }
 
-    /// Noise values for cave generation in voxel index order.
-    pub fn cave_noise(&self, coord: ChunkCoord) -> Vec<f32> {
-        let seed = self.seed.wrapping_add(CAVE_SEED_OFFSET);
-        self.caves.noise.area3(seed, coord.x, coord.z)
+    pub(crate) fn cave_seed(&self) -> i32 {
+        self.seed.wrapping_add(CAVE_SEED_OFFSET)
     }
 
-    /// The ore voxel at this position, if any. The first ore in `ores` wins where clusters overlap.
-    pub fn ore_at(&self, x: i32, y: i32, z: i32) -> Option<VoxelType> {
-        self.ores.iter().enumerate()
-            .find(|(index, ore)| {
-                // Every ore has its own seed, so their clusters do not line up
-                let seed = self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((*index as i32 + 1).wrapping_mul(0x9E37_79B9u32 as i32));
-                ore.contains(seed, x, y, z)
-            })
-            .map(|(_, ore)| ore.voxel)
+    pub(crate) fn ore_seed(&self, index: usize) -> i32 {
+        self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((index as i32 + 1).wrapping_mul(0x9E37_79B9u32 as i32))
     }
 
     /// Whether a tree grows in this column, given the column's biome.

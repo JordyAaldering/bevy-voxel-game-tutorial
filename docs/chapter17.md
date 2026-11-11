@@ -109,14 +109,12 @@ Ores might depend on the biome, so they come after.
 2. **Create coal, iron, gold, and diamond** (`default_ores`).
    They get rarer and deeper in this order, and the clusters of the rarer ores are smaller.
    The voxel types (`StoneCoal` and so on) and their textures already existed.
-3. **Expose the nearest feature point of Voronoi noise.** `voronoi::noise3` only gives a distance, but ores also need to know _which_ cell a position is in.
-   `voronoi::cell3` returns the distance to the nearest feature point and a hash of the cell it belongs to, and `noise3` is now built on top of it.
-   The feature-point hash and distances use 32-bit arithmetic, so this version places ore differently from the earlier 64-bit implementation.
-4. **Place clusters with it** (`Ore::contains`).
-   The position is divided by the cell size, which is `4 * cluster_size`, so cells are wide enough for their cluster to fit inside.
-   The hash of the nearest cell then decides two things, each with its own salt so they are independent: whether the cell has a cluster at all (`rarity` is the probability), and how large it is, between half and the full `cluster_size`.
-   A voxel is ore if it is within that radius of the feature point, which gives roughly spherical blobs at random places.
-   Positions outside the height range are rejected first, which also saves the noise lookup.
+3. **Sample Voronoi noise.** Its value is `-1` at each feature point and rises with distance.
+   The frequency is `1 / (4 * cluster_size)`, so the cell width is four times the maximum cluster radius.
+4. **Place clusters with a threshold** (`Ore::contains`).
+   A voxel is ore when its value is at most `-1 + 0.5 * cbrt(rarity)`.
+   This gives each feature point a roughly spherical cluster with radius `cluster_size * cbrt(rarity)`.
+   A zero rarity produces no ore. Positions outside the height range are rejected first.
 5. **Seed each ore separately.** `WorldConfig::ore_at` gives every ore its own seed, derived from the world seed and its index, otherwise all ores would sit at the same cluster centers.
    Where clusters of two ores overlap, the first one in the list wins.
 6. **Add `OreGeneration`.** It is a new `ChunkGenerationPhase` after `HeightGeneration` and before `CaveGeneration`.
@@ -128,8 +126,8 @@ Ores might depend on the biome, so they come after.
 
 ### Tuning
 
-- A cell is `4 * cluster_size` wide, so the same `rarity` gives fewer, but larger, clusters for a bigger `cluster_size`. Rarity is per cell, not per block.
-- With the defaults, coal is about 0.5% of the stone at heights 1 to 14, and diamond about 0.02%.
+- A cell is `4 * cluster_size` wide. The `rarity` parameter scales cluster volume approximately linearly; it is no longer the probability of choosing a cell.
+- Every cell now has a cluster, rather than a random subset of cells with varied radii. Existing configurations still load, but generated ore distributions change.
 - Clusters are cut off by the height range, so a wide range spreads one ore over more depth, and a narrow one makes it a layer.
 
 ## Trees and other structures

@@ -62,7 +62,6 @@ const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 struct Structures {
     tree: Structure,
 }
-
 impl Structures {
     const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
 
@@ -229,7 +228,7 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 #[component(storage = "SparseSet")]
 struct NeedsGenerationCheck;
 
-/// A chunk generation phase running on another thread. Dropping it cancels the task.
+/// A chunk generation phase running asynchronously.
 #[derive(Component)]
 struct ChunkGenerationTask(Task<ChunkGenerationResult>);
 
@@ -237,6 +236,7 @@ enum ChunkGenerationResult {
     Data(ChunkGenerationPhase, Box<ChunkData>),
     Structures(Vec<WorldCoord>),
     Mesh(Mesh),
+    Error(String),
 }
 
 #[derive(Component)]
@@ -622,6 +622,7 @@ fn main() -> AppExit {
             PhysicsPlugin::new(is_gamemode_survival),
             TelemetryPlugin,
             EditorPlugin,
+            noise::gpu::NoisePlugin,
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -798,9 +799,8 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
 
 /// Carves caves out of the terrain, which has to be done before structures are placed on top of it.
 /// Only this chunk is read and written, the noise is a pure function of the world position.
-fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
+fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
     let columns = config.columns(chunk.coord);
-    let noise = config.cave_noise(chunk.coord);
     for x in 0..CHUNK_WIDTH {
         for z in 0..CHUNK_WIDTH {
             let height = columns[x + z * CHUNK_WIDTH].height;
@@ -816,19 +816,17 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
 }
 
 /// Replaces stone with ore. Only stone is replaced, so ores do not overwrite the surface.
-fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig) {
+fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>]) {
     for x in 0..CHUNK_WIDTH {
-        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
-
         for z in 0..CHUNK_WIDTH {
-            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
-
             for y in 0..CHUNK_HEIGHT {
                 let coord = VoxelCoord::new(x, y, z);
                 if chunk[coord] != VoxelType::Stone {
                     continue;
                 }
-                if let Some(ore) = config.ore_at(world_x, y as i32, world_z) {
+                if let Some(ore) = config.ores.iter().zip(maps).find_map(|(ore, map)| {
+                    ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
+                }) {
                     chunk[coord] = ore;
                 }
             }
@@ -987,6 +985,7 @@ fn poll_chunk_generation_tasks(
                 assert!(data.generation_phase >= ChunkGenerationPhase::MeshGeneration);
                 data.generation_phase = data.generation_phase.next();
             }
+            ChunkGenerationResult::Error(error) => panic!("Chunk {} generation failed: {error}", chunk.coord),
         }
 
         commands.entity(entity).remove::<ChunkGenerationTask>();
@@ -1000,6 +999,7 @@ fn start_chunk_generation_tasks(
     world: Res<VoxelWorld>,
     config: Res<WorldConfig>,
     atlas: Res<SharedVoxelAtlas>,
+    mut noise_backend: ResMut<noise::gpu::NoiseBackend>,
     chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();
@@ -1008,26 +1008,42 @@ fn start_chunk_generation_tasks(
         let data = &world.chunks[&chunk.coord];
 
         let phase = data.generation_phase;
-        commands.entity(entity).remove::<NeedsGenerationCheck>();
 
         if !world.neighbors_ready_for(chunk.coord, match phase {
             ChunkGenerationPhase::Done => ChunkGenerationPhase::MeshGeneration,
             _ => phase,
         }) {
+            commands.entity(entity).remove::<NeedsGenerationCheck>();
             continue;
         }
+
+        commands.entity(entity).remove::<NeedsGenerationCheck>();
 
         let task = match phase {
             ChunkGenerationPhase::HeightGeneration | ChunkGenerationPhase::OreGeneration | ChunkGenerationPhase::CaveGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
+                let noise_tasks: Vec<_> = match phase {
+                    ChunkGenerationPhase::OreGeneration => config.ores.iter().enumerate()
+                        .map(|(index, ore)| noise_backend.area3(ore.noise_settings(), config.ore_seed(index), chunk.coord.x, chunk.coord.z))
+                        .collect(),
+                    ChunkGenerationPhase::CaveGeneration => vec![noise_backend.area3(config.caves.noise, config.cave_seed(), chunk.coord.x, chunk.coord.z)],
+                    _ => Vec::new(),
+                };
                 info!("Generating {:?} for chunk {}", phase, chunk.coord);
                 pool.spawn(async move {
                     let mut generated = Box::new((*data).clone());
+                    let mut maps = Vec::with_capacity(noise_tasks.len());
+                    for task in noise_tasks {
+                        match task.result().await {
+                            Ok(values) => maps.push(values),
+                            Err(error) => return ChunkGenerationResult::Error(error),
+                        }
+                    }
                     match phase {
                         ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
-                        ChunkGenerationPhase::OreGeneration => generate_ores(&mut generated, &config),
-                        ChunkGenerationPhase::CaveGeneration => generate_caves(&mut generated, &config),
+                        ChunkGenerationPhase::OreGeneration => generate_ores(&mut generated, &config, &maps),
+                        ChunkGenerationPhase::CaveGeneration => generate_caves(&mut generated, &config, &maps[0]),
                         _ => unreachable!(),
                     }
                     ChunkGenerationResult::Data(phase, generated)

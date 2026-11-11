@@ -613,7 +613,7 @@ static GRADIENTS_2D: LazyLock<Vec<f32>> = LazyLock::new(|| {
         .collect()
 });
 
-static GRADIENTS_3D: LazyLock<Vec<f32>> = LazyLock::new(|| {
+pub(super) static GRADIENTS_3D: LazyLock<Vec<f32>> = LazyLock::new(|| {
     GRAD3_SRC
         .into_iter()
         .map(|v| (v / NORMALIZER_3D) as f32)

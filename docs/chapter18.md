@@ -1,43 +1,56 @@
 # Shader programming
 
-We now have a bunch of compute-intensive noise algorithms.
-We can offload these to the GPU using shaders to improve performance.
-However, this is not easy.
-If we use a blocking compute shader, computations will stall the game and cause stuttering.
-Instead, we should use _async readback_: the cave generation phase waits for results to come in before continuing.
+The ore and cave phases request chunk-sized batches of 3D noise. A
+`NoiseGenerationTask` returns a `Vec<f32>` regardless of whether the CPU or GPU
+produced it. The surrounding `ChunkGenerationTask` represents the whole phase;
+it waits for the noise and then applies ore or cave rules on the CPU.
 
-## Plan
+## Backend selection
 
-For this chapter, move 3D Voronoi sampling for caves to the GPU.
-The CPU implementation already provides chunk-sized batches and uses `f32` coordinates, `i32` seeds, and wrapping `u32` hashes.
-The seeded Voronoi shader mirrors the CPU algorithm, but is not yet connected to chunk generation.
-The default cave configuration still uses OpenSimplex2S; a Voronoi GPU backend would apply only when the cave noise type is configured as Voronoi.
-Leave height generation, ores, structures, and meshing on the CPU.
+Set `BEVY_VOXEL_NOISE_BACKEND` before starting the game:
 
-1. **Define the noise batch.** Describe a 3D grid using its world-space origin, dimensions, seed, and `NoiseSettings`.
-   The result is a flat array of `f32` values with a documented index order shared by the CPU and shader.
-   The shader applies the same offsets, octaves, frequency, persistence, lacunarity, amplitude, and bias as the CPU batch implementation.
+- `auto` (default) uses the render GPU, or the CPU on a software adapter.
+  Recoverable pipeline or readback failures are reported and queued work is
+  retried on the CPU.
+- `cpu` runs batches on the CPU.
+- `gpu` requires GPU execution and reports failures instead of falling back.
 
-2. **Add a compute shader.** Use the seeded 3D Voronoi function in a compute shader and evaluate one grid position per invocation.
-   Sample in world coordinates so neighboring chunks use the same noise field, and guard invocations outside the grid.
-   Match the CPU's 32-bit seed and wrapping hash operations.
+For example, `BEVY_VOXEL_NOISE_BACKEND=cpu cargo run`. Fatal renderer or
+device failures remain subject to Bevy's renderer error policy.
 
-3. **Set up GPU jobs and readback.** Add a render-side compute pipeline with parameter and output buffers.
-   Queue noise batches from the main world, dispatch them when the pipeline and buffers are ready, and copy each output buffer for asynchronous readback after its dispatch.
-   Deliver each completed array back to the main world without blocking a frame.
-   Limit in-flight jobs and retain their buffers until readback completes.
+## Batches
 
-4. **Connect jobs to chunk generation.** Extend `ChunkGenerationTask` to represent a pending GPU job, or bridge readback into its existing task interface.
-   Start a noise batch during `CaveGeneration` and keep the chunk in that phase until its result arrives.
-   Associate each job with a unique ID, chunk entity, coordinate, and phase so results for unloaded, replaced, or otherwise stale chunks are discarded.
-   Report pipeline and readback failures explicitly; do not leave a chunk waiting indefinitely.
+Both 3D Voronoi and OpenSimplex2S are supported. A request includes the noise
+settings, seed, and chunk coordinate. The shader applies frequency, offset,
+octaves, persistence, lacunarity, amplitude, and bias; output order is
+`x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)`, as for the CPU batch.
+The GPU produces scalar noise, not ore decisions. The CPU applies the ore
+threshold, height range, priority, and stone-only rules to the returned values.
+Height and biome sampling remain on the CPU.
 
-5. **Apply the result on the CPU.** Change `generate_caves` to consume the GPU-returned array in place of its current CPU noise batch.
-   Keep the existing threshold, terrain-height limit, and bottom-layer rules.
-   Once the cave data is applied, complete the task, advance the phase, and notify the chunk and its neighbors as before.
-   For cave configurations using a noise algorithm other than Voronoi, continue using the CPU implementation until a GPU implementation exists.
-   Support automatic, CPU, and GPU backend selection: automatic mode reports GPU failures and retries on the CPU, while explicit GPU mode reports them without silently falling back.
+Requests are queued and GPU readbacks are asynchronous, with a limit on
+in-flight buffers. Dropping a chunk task drops its noise receivers; completed
+results are discarded if the recipient has gone away. Saved chunks retain
+their last completed generation phase.
 
-6. **Preserve lifecycle and world semantics.** Unloading a chunk cancels or abandons its pending job; already submitted GPU work may still finish and its result must be ignored.
-   Saves continue to record the last completed phase, so interrupted cave generation can restart.
-   CPU and GPU `f32` arithmetic may still differ at thresholds, so decide how generator versions and existing worlds should handle those differences.
+The GPU and CPU use the same seeds, hash constants and gradients. Voronoi
+results are close, but not guaranteed bit-identical. The GPU OpenSimplex2S
+implementation enumerates lattice points with the same selection rules as the
+CPU; small floating-point differences remain, including near cave thresholds.
+Changing the backend can therefore change boundary
+voxels. The new scalar ore threshold also changes ore placement compared with
+the previous per-cell rarity and variable-radius algorithm.
+
+## WESL, Bevy, and wgpu
+
+WESL extends WGSL with module and import facilities, useful as the noise
+library grows. Bevy supports both and compiles WESL to WGSL. The embedded
+compute shader is assembled from separate Voronoi and seeded OpenSimplex2S
+samplers and a shared batch entry point. The noise module owns the CPU/GPU
+service and compiles the assembled shader through Bevy's pipeline cache.
+
+Bevy already uses wgpu and exposes render and readback helpers, so a direct
+wgpu dependency is not essential. Here it exposes the same underlying wgpu
+types for buffer creation, command submission, and asynchronous mapping; it
+does not add a separate renderer. Explicit mapping lets the noise service
+report failures and timeouts for individual batches.
