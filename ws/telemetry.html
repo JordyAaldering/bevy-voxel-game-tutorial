@@ -25,6 +25,14 @@
     .label { color: #9caec3; }
     .value { font-size: 2.5rem; font-weight: 700; }
     #status { color: #9caec3; margin-bottom: 1rem; }
+    .pipeline { margin-top: 1rem; }
+    .pipeline h2 { margin-top: 0; }
+    .pipeline .cards { margin-bottom: 1.5rem; }
+    .pipeline .cards .card { background: #293443; }
+    .phase { margin-top: 1rem; }
+    .phase-header { display: flex; justify-content: space-between; margin-bottom: 0.4rem; }
+    .phase-track { height: 12px; background: #293443; border-radius: 20px; overflow: hidden; }
+    .phase-bar { height: 100%; border-radius: 20px; transition: width 250ms ease; }
   </style>
 </head>
 <body>
@@ -46,8 +54,71 @@
     </div>
   </div>
 
+  <section class="card pipeline">
+    <h2>Chunk generation pipeline</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="label">In progress</div>
+        <div class="value" id="chunks-in-progress">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Done</div>
+        <div class="value" id="chunks-done">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Unloaded</div>
+        <div class="value" id="chunks-unloaded">0</div>
+      </div>
+    </div>
+    <div id="chunk-phases"></div>
+  </section>
+
   <script>
     const status = document.querySelector("#status");
+    const phases = [
+      ["height_generation", "Height generation", "#60a5fa"],
+      ["ore_generation", "Ore generation", "#fbbf24"],
+      ["cave_generation", "Cave generation", "#a78bfa"],
+      ["generate_structures", "Generate structures", "#f472b6"],
+      ["mesh_generation", "Mesh generation", "#34d399"]
+    ];
+    const phaseElements = phases.map(([key, name, color]) => {
+      const phase = document.createElement("div");
+      phase.className = "phase";
+      const header = document.createElement("div");
+      header.className = "phase-header";
+      const label = document.createElement("span");
+      label.textContent = name;
+      const count = document.createElement("strong");
+      header.append(label, count);
+      const track = document.createElement("div");
+      track.className = "phase-track";
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-label", name);
+      const bar = document.createElement("div");
+      bar.className = "phase-bar";
+      bar.style.background = color;
+      track.append(bar);
+      phase.append(header, track);
+      document.querySelector("#chunk-phases").append(phase);
+      return { key, count, track, bar };
+    });
+
+    function updateChunks(chunks) {
+      document.querySelector("#chunks-in-progress").textContent = chunks.in_progress;
+      document.querySelector("#chunks-done").textContent = chunks.done;
+      document.querySelector("#chunks-unloaded").textContent = chunks.unloaded;
+      for (const { key, count, track, bar } of phaseElements) {
+        const value = chunks[key];
+        const percent = chunks.in_progress === 0 ? 0 : value / chunks.in_progress * 100;
+        count.textContent = value;
+        bar.style.width = `${percent}%`;
+        track.setAttribute("aria-valuemin", "0");
+        track.setAttribute("aria-valuemax", chunks.in_progress);
+        track.setAttribute("aria-valuenow", value);
+        track.setAttribute("aria-valuetext", `${value} of ${chunks.in_progress} in-progress chunks`);
+      }
+    }
 
     function connect() {
       const ws = new WebSocket(
@@ -69,6 +140,8 @@
 
         document.querySelector("#entities").textContent =
           data.entity_count?.toFixed(0) ?? "—";
+
+        updateChunks(data.chunks);
       };
 
       ws.onclose = () => {

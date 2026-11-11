@@ -1,3 +1,5 @@
+use crate::{ChunkGenerationPhase, ChunkGenerationTask, VoxelWorld};
+
 use std::{net::SocketAddr, time::Duration};
 
 use axum::{
@@ -13,7 +15,6 @@ use bevy::{
     time::common_conditions::on_timer,
     diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin},
 };
-use serde::Serialize;
 use tokio::sync::watch;
 
 /// Serves the telemetry dashboard from an async task on Bevy's IO task pool.
@@ -23,11 +24,26 @@ pub struct TelemetryPlugin;
 #[derive(Resource)]
 struct TelemetryPublisher(watch::Sender<Telemetry>);
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Resource)]
+#[derive(serde::Serialize)]
+struct ChunkTelemetry {
+    height_generation: usize,
+    ore_generation: usize,
+    cave_generation: usize,
+    generate_structures: usize,
+    mesh_generation: usize,
+    in_progress: usize,
+    done: usize,
+    unloaded: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+#[derive(serde::Serialize)]
 struct Telemetry {
     frame_rate: f64,
     frame_time: f64,
     entity_count: f64,
+    chunks: ChunkTelemetry,
 }
 
 impl Plugin for TelemetryPlugin {
@@ -40,8 +56,12 @@ impl Plugin for TelemetryPlugin {
             .detach();
 
         app.insert_resource(TelemetryPublisher(sender))
-            .add_systems(Update, collect_telemetry
-                .run_if(on_timer(Duration::from_millis(250))));
+            .init_resource::<ChunkTelemetry>()
+            .add_systems(Update,
+                (collect_chunk_telemetry, collect_telemetry)
+                    .chain()
+                    .run_if(on_timer(Duration::from_millis(250)))
+            );
     }
 }
 
@@ -64,7 +84,47 @@ async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .unwrap();
 }
 
-fn collect_telemetry(diagnostics: Res<DiagnosticsStore>, publisher: Res<TelemetryPublisher>) {
+fn collect_chunk_telemetry(
+    world: Res<VoxelWorld>,
+    tasks: Query<&ChunkGenerationTask>,
+    mut telemetry: ResMut<ChunkTelemetry>,
+) {
+    let mut snapshot = ChunkTelemetry::default();
+    for chunk in world.chunks.values() {
+        if chunk.entity.is_none() {
+            snapshot.unloaded += 1;
+            continue;
+        }
+
+        let count = match chunk.generation_phase {
+            ChunkGenerationPhase::HeightGeneration => &mut snapshot.height_generation,
+            ChunkGenerationPhase::OreGeneration => &mut snapshot.ore_generation,
+            ChunkGenerationPhase::CaveGeneration => &mut snapshot.cave_generation,
+            ChunkGenerationPhase::GenerateStructures => &mut snapshot.generate_structures,
+            ChunkGenerationPhase::MeshGeneration => &mut snapshot.mesh_generation,
+            ChunkGenerationPhase::Done
+                if chunk.entity.is_some_and(|entity| tasks.contains(entity)) =>
+            {
+                &mut snapshot.mesh_generation
+            }
+            ChunkGenerationPhase::Done => {
+                snapshot.done += 1;
+                continue;
+            }
+        };
+
+        *count += 1;
+        snapshot.in_progress += 1;
+    }
+
+    *telemetry = snapshot;
+}
+
+fn collect_telemetry(
+    diagnostics: Res<DiagnosticsStore>,
+    publisher: Res<TelemetryPublisher>,
+    chunks: Res<ChunkTelemetry>,
+) {
     let value = |path| {
         diagnostics.get(path)
             .and_then(|d| d.smoothed())
@@ -75,6 +135,7 @@ fn collect_telemetry(diagnostics: Res<DiagnosticsStore>, publisher: Res<Telemetr
         frame_rate: value(&FrameTimeDiagnosticsPlugin::FPS),
         frame_time: value(&FrameTimeDiagnosticsPlugin::FRAME_TIME),
         entity_count: value(&EntityCountDiagnosticsPlugin::ENTITY_COUNT),
+        chunks: chunks.clone(),
     };
 
     publisher.0.send_replace(snapshot);
