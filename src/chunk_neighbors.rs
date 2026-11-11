@@ -20,9 +20,9 @@ impl ChunkNeighbors {
         Self {
             north: chunks.get(&ChunkCoord::new(pos.x, pos.z + 1)).cloned(),
             north_east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z + 1)).cloned(),
-            east: chunks.get(&ChunkCoord::new(pos.x, pos.z - 1)).cloned(),
+            east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z)).cloned(),
             south_east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z - 1)).cloned(),
-            south: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z)).cloned(),
+            south: chunks.get(&ChunkCoord::new(pos.x, pos.z - 1)).cloned(),
             south_west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z - 1)).cloned(),
             west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z)).cloned(),
             north_west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z + 1)).cloned(),

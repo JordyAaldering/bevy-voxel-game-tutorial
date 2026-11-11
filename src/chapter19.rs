@@ -156,6 +156,7 @@ struct DebugGizmos {
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[repr(u16)]
 pub enum VoxelType {
     Air,
     Grass,
@@ -559,7 +560,10 @@ impl VoxelWorld {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
-        Arc::make_mut(chunk)[voxel_pos] = voxel;
+
+        let chunk = Arc::make_mut(chunk);
+        chunk[voxel_pos] = voxel;
+        chunk.density[voxel_pos.index()] = if voxel.is_terrain() { 1.0 } else { 0.0 };
 
         self.notify_chunk(commands, chunk_pos);
 
@@ -573,6 +577,9 @@ impl VoxelWorld {
             self.notify_chunk(commands, chunk_pos + Compass::Back);
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
             self.notify_chunk(commands, chunk_pos + Compass::Front);
+        }
+        if voxel_pos.x == 0 && voxel_pos.z == 0 {
+            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z - 1));
         }
     }
 
@@ -602,7 +609,10 @@ impl VoxelWorld {
 
             let chunk = self.chunks.get_mut(&coord.chunk_coord())
                 .expect("Structure generation requires all neighboring chunk data");
-            Arc::make_mut(chunk)[coord.local_coord()] = voxel.voxel;
+            let chunk = Arc::make_mut(chunk);
+            let local = coord.local_coord();
+            chunk[local] = voxel.voxel;
+            chunk.density[local.index()] = if voxel.voxel.is_terrain() { 1.0 } else { 0.0 };
         }
     }
 
@@ -914,7 +924,7 @@ fn build_voxel_mesh(
     let mut voxel_mesh = MeshData::new(atlas.layout());
 
     for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, v)| *v != VoxelType::Air)
+        .filter(|(_, v)| *v != VoxelType::Air && !v.is_terrain())
     {
         for direction in Direction::iter() {
             if is_face_visible(neighbors, chunk, voxel_pos, direction) {
@@ -928,18 +938,86 @@ fn build_voxel_mesh(
     voxel_mesh.build()
 }
 
+#[derive(Clone, Copy)]
+struct TerrainSample {
+    position: Vec3,
+    density: f32,
+    voxel: VoxelType,
+    variant_seed: u32,
+}
+
 fn build_terrain_mesh(
     chunk: &ChunkData,
-    chunk_pos: ChunkCoord,
     neighbors: &ChunkNeighbors,
     atlas: &VoxelAtlas,
 ) -> Mesh {
     let mut terrain_mesh = MeshData::new(atlas.layout());
+    let north = neighbors.north.as_deref().expect("Terrain meshing requires the north neighbor");
+    let north_east = neighbors.north_east.as_deref().expect("Terrain meshing requires the north-east neighbor");
+    let east = neighbors.east.as_deref().expect("Terrain meshing requires the east neighbor");
 
-    // TODO: Sample marching-cube cells from this chunk and its neighbors, and
-    // choose terrain textures before adding their geometry to terrain_mesh.
+    for z in 0..CHUNK_WIDTH {
+        for y in 0..CHUNK_HEIGHT {
+            for x in 0..CHUNK_WIDTH {
+                let samples = terrain_cell_corners(
+                    chunk,
+                    north,
+                    north_east,
+                    east,
+                    VoxelCoord::new(x, y, z),
+                );
+                terrain_mesh.add_marching_cube(
+                    samples.map(|sample| (sample.position, sample.density)),
+                    |corner, direction| {
+                        let sample = samples[corner];
+                        assert_ne!(sample.voxel, VoxelType::Air, "Solid terrain sample has no voxel material");
+                        atlas.texture(sample.voxel, direction, sample.variant_seed)
+                    },
+                );
+            }
+        }
+    }
 
     terrain_mesh.build()
+}
+
+fn terrain_cell_corners(
+    chunk: &ChunkData,
+    north: &ChunkData,
+    north_east: &ChunkData,
+    east: &ChunkData,
+    origin: VoxelCoord,
+) -> [TerrainSample; 8] {
+    // Cells belong to the chunk containing their minimum x/z sample. The top
+    // layer samples empty space above the world; the bottom remains open.
+    const OFFSETS: [(usize, usize, usize); 8] = [
+        (0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1),
+        (0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1),
+    ];
+
+    OFFSETS.map(|(dx, dy, dz)| {
+        let x = origin.x + dx;
+        let y = origin.y + dy;
+        let z = origin.z + dz;
+        let position = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+        if y == CHUNK_HEIGHT {
+            TerrainSample { position, density: 0.0, voxel: VoxelType::Air, variant_seed: 0 }
+        } else {
+            let source = match (x == CHUNK_WIDTH, z == CHUNK_WIDTH) {
+                (false, false) => chunk,
+                (false, true) => north,
+                (true, true) => north_east,
+                (true, false) => east,
+            };
+            let local = VoxelCoord::new(x % CHUNK_WIDTH, y, z % CHUNK_WIDTH);
+            TerrainSample {
+                position,
+                density: source.density[local.index()],
+                voxel: source[local],
+                variant_seed: variant_seed(source.coord, local),
+            }
+        }
+    })
 }
 
 /// Deterministic per-position hash, so a voxel keeps its variant when remeshed or reloaded.
@@ -1020,6 +1098,7 @@ fn poll_chunk_generation_tasks(
                 let data = &mut world[chunk];
                 assert_eq!(data.generation_phase, phase);
                 data.voxels = generated.voxels;
+                data.density = generated.density;
                 data.generation_phase = data.generation_phase.next();
                 world.notify_chunk(&mut commands, chunk.coord);
                 world.notify_neighbors(&mut commands, chunk.coord);
@@ -1155,7 +1234,7 @@ fn start_chunk_generation_tasks(
                 pool.spawn(async move {
                     ChunkGenerationResult::Mesh {
                         voxels: build_voxel_mesh(&data, coord, &neighbors, &atlas),
-                        terrain: build_terrain_mesh(&data, coord, &neighbors, &atlas),
+                        terrain: build_terrain_mesh(&data, &neighbors, &atlas),
                     }
                 })
             }

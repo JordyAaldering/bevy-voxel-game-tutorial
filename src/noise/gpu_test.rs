@@ -36,10 +36,7 @@ fn noise_cpu_matches_gpu() {
     app.cleanup();
     app.update();
 
-    assert!(
-        app.world().resource::<GpuBackend>().gpu.is_some(),
-        "GPU noise unavailable; run with a compatible adapter and BEVY_VOXEL_NOISE_BACKEND=auto or gpu"
-    );
+    assert!(app.world().resource::<GpuBackend>().gpu.is_some(), "GPU noise unavailable");
 
     let mut requests = Vec::new();
     for noise_type in [NoiseType::Voronoi, NoiseType::OpenSimplex2S] {
@@ -87,12 +84,15 @@ fn noise_cpu_matches_gpu() {
         assert_eq!(actual.len(), expected.len());
         assert!(actual.iter().all(|value| value.is_finite()));
 
-        let max_error = actual.iter().zip(expected).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+        let max_error = actual.iter()
+            .zip(expected)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f32::max);
 
         assert!(
             max_error < 0.0002,
-            "{:?}, {} octaves: GPU noise differs by {max_error}",
-            settings.noise_type, settings.octaves
+            "{:?}, {} octaves: GPU noise differs by {}",
+            settings.noise_type, settings.octaves, max_error
         );
     }
 }
