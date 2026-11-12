@@ -245,31 +245,71 @@ fn terrain_crossing(
     velocity: f32,
 ) -> Option<f32> {
     let previous = sample_terrain_at_axis(world, axis, start, sample)?;
-    let current = sample_terrain_at_axis(world, axis, end, sample)?;
-    if previous <= 0.5 && current >= 0.5 && previous != current {
-        let fraction = (0.5 - previous) / (current - previous);
-        return Some(start + (end - start) * fraction);
-    };
+    if previous <= 0.5 {
+        return find_terrain_crossing(world, axis, sample, start, end, false);
+    }
 
+    let current = sample_terrain_at_axis(world, axis, end, sample)?;
     if current < 0.5 {
         return None;
     }
 
     let direction = if velocity < 0.0 { 1.0 } else { -1.0 };
     let max_distance = match axis {
-        Axis::X | Axis::Z => (PLAYER_WIDTH + 1.0).ceil() as usize,
-        Axis::Y => (PLAYER_HEIGHT + 1.0).ceil() as usize,
+        Axis::X | Axis::Z => (PLAYER_WIDTH + 1.0).ceil(),
+        Axis::Y => (PLAYER_HEIGHT + 1.0).ceil(),
     };
-    for distance in 1..=max_distance {
-        let empty_edge = end + direction * distance as f32;
-        let empty_density = sample_terrain_at_axis(world, axis, empty_edge, sample)?;
-        if empty_density < 0.5 {
-            let fraction = (0.5 - empty_density) / (current - empty_density);
-            return Some(empty_edge + (end - empty_edge) * fraction);
-        }
-    }
 
-    None
+    find_terrain_crossing(world, axis, sample, end, end + direction * max_distance, true)
+}
+
+fn find_terrain_crossing(
+    world: &VoxelWorld,
+    axis: Axis,
+    sample: Vec3,
+    start: f32,
+    end: f32,
+    leaving_solid: bool,
+) -> Option<f32> {
+    let increasing = end > start;
+
+    let mut boundary = if increasing {
+        (start - 0.5).floor() as i32 + 1
+    } else {
+        (start - 0.5).ceil() as i32 - 1
+    };
+
+    let mut position = start;
+    let mut density = sample_terrain_at_axis(world, axis, position, sample)?;
+
+    loop {
+        let next_boundary = boundary as f32 + 0.5;
+        let next = if increasing {
+            next_boundary.min(end)
+        } else {
+            next_boundary.max(end)
+        };
+
+        let next_density = sample_terrain_at_axis(world, axis, next, sample)?;
+        let crosses = if leaving_solid {
+            density >= 0.5 && next_density < 0.5
+        } else {
+            density <= 0.5 && next_density >= 0.5
+        };
+
+        if crosses && density != next_density {
+            let fraction = (0.5 - density) / (next_density - density);
+            return Some(position + (next - position) * fraction);
+        }
+
+        if next == end {
+            return None;
+        }
+
+        position = next;
+        density = next_density;
+        boundary += if increasing { 1 } else { -1 };
+    }
 }
 
 fn sample_terrain_at_axis(world: &VoxelWorld, axis: Axis, axis_position: f32, sample: Vec3) -> Option<f32> {
