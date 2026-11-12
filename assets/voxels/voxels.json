@@ -1,80 +1,82 @@
 {
-  "grass": {
-    "top": "grass_top",
-    "bottom": "dirt",
-    "sides": "dirt_grass"
+  "blocks": {
+    "log": {
+      "top": "trunk_top",
+      "bottom": "trunk_top",
+      "sides": "trunk_side"
+    },
+    "leaves": {
+      "all": "leaves"
+    },
+    "brickgrey": {
+      "all": "brick_gray"
+    },
+    "brickred": {
+      "all": "brick_red"
+    },
+    "cactus": {
+      "top": "cactus_top",
+      "bottom": "cactus_inside",
+      "sides": "cactus_side"
+    },
+    "cottonblue": {
+      "all": "cotton_blue"
+    },
+    "cottongreen": {
+      "all": "cotton_green"
+    },
+    "cottonred": {
+      "all": "cotton_red"
+    },
+    "cottonwhite": {
+      "all": "cotton_tan"
+    },
+    "glass": {
+      "all": "glass"
+    }
   },
-  "dirt": {
-    "all": "dirt"
-  },
-  "stone": {
-    "all": "stone"
-  },
-  "stonecoal": {
-    "variants": [
-      { "all": "stone_coal" },
-      { "all": "stone_coal_alt" }
-    ]
-  },
-  "stoneiron": {
-    "variants": [
-      { "all": "stone_iron" },
-      { "all": "stone_iron_alt" }
-    ]
-  },
-  "stonegold": {
-    "variants": [
-      { "all": "stone_gold" },
-      { "all": "stone_gold_alt" }
-    ]
-  },
-  "stonediamond": {
-    "variants": [
-      { "all": "stone_diamond" },
-      { "all": "stone_diamond_alt" }
-    ]
-  },
-  "log": {
-    "top": "trunk_top",
-    "bottom": "trunk_top",
-    "sides": "trunk_side"
-  },
-  "leaves": {
-    "all": "leaves"
-  },
-  "brickgrey": {
-    "all": "brick_gray"
-  },
-  "brickred": {
-    "all": "brick_red"
-  },
-  "cactus": {
-    "top": "cactus_top",
-    "bottom": "cactus_inside",
-    "sides": "cactus_side"
-  },
-  "cottonblue": {
-    "all": "cotton_blue"
-  },
-  "cottongreen": {
-    "all": "cotton_green"
-  },
-  "cottonred": {
-    "all": "cotton_red"
-  },
-  "cottonwhite": {
-    "all": "cotton_tan"
-  },
-  "sand": {
-    "all": "sand"
-  },
-  "snow": {
-    "all": "snow"
-  },
-  "glass": {
-    "all": "glass"
-  },
-  "ice": {
-    "all": "ice"
+  "terrain": {
+    "grass": {
+      "all": "dirt_grass"
+    },
+    "dirt": {
+      "all": "dirt"
+    },
+    "stone": {
+      "all": "stone"
+    },
+    "stonecoal": {
+      "variants": [
+        { "all": "stone_coal" },
+        { "all": "stone_coal_alt" }
+      ]
+    },
+    "stoneiron": {
+      "variants": [
+        { "all": "stone_iron" },
+        { "all": "stone_iron_alt" }
+      ]
+    },
+    "stonegold": {
+      "variants": [
+        { "all": "stone_gold" },
+        { "all": "stone_gold_alt" }
+      ]
+    },
+    "stonediamond": {
+      "variants": [
+        { "all": "stone_diamond" },
+        { "all": "stone_diamond_alt" }
+      ]
+    },
+    "sand": {
+      "all": "sand"
+    },
+    "snow": {
+      "all": "snow"
+    },
+    "ice": {
+      "all": "ice"
+    }
   }
 }

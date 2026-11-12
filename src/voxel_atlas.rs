@@ -1,4 +1,4 @@
-use crate::{coords::Direction, VoxelType};
+use crate::{coords::Direction, BlockType, TerrainType, VoxelType};
 
 use std::{collections::BTreeSet, fs, path::Path};
 
@@ -34,14 +34,14 @@ impl VoxelSpec {
 pub struct VoxelAtlas {
     layout: TextureAtlasLayout,
     /// Atlas index per voxel type, variant, and direction. Air is never rendered and has no variants.
-    faces: Vec<Vec<[usize; 6]>>,
+    faces: HashMap<VoxelType, Vec<[usize; 6]>>,
 }
 
 impl VoxelAtlas {
     /// `variant_seed` picks one of the voxel's variants; the same seed always gives the same variant.
     #[allow(unused)]
     pub fn texture(&self, voxel: VoxelType, direction: Direction, variant_seed: u32) -> usize {
-        let variants = &self.faces[voxel as usize];
+        let variants = self.faces.get(&voxel).expect("solid voxel has no atlas entry");
         variants[variant_seed as usize % variants.len()][direction as usize]
     }
 
@@ -50,7 +50,8 @@ impl VoxelAtlas {
     }
 }
 
-/// Describes which image is used on each face of a voxel, as found in `voxels.json`.
+/// Describes which image is used on each face of a voxel, as found in a category's
+/// section of `voxels.json`.
 /// More specific faces take precedence: `front`/`back`/`left`/`right`, then
 /// `sides` (horizontal faces only) or `top`/`bottom`, then `all`.
 #[derive(Default, serde::Deserialize)]
@@ -64,6 +65,13 @@ struct FaceSpec {
     back: Option<String>,
     left: Option<String>,
     right: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VoxelSpecs {
+    blocks: HashMap<BlockType, VoxelSpec>,
+    terrain: HashMap<TerrainType, VoxelSpec>,
 }
 
 impl FaceSpec {
@@ -85,14 +93,19 @@ impl FaceSpec {
 pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Image), String> {
     let json_path = Path::new(VOXELS_DIR).join("voxels.json");
     let json = fs::read_to_string(&json_path).map_err(|e| format!("{}: {e}", json_path.display()))?;
-    let specs: HashMap<VoxelType, VoxelSpec> = serde_json::from_str(&json)
+    let specs: VoxelSpecs = serde_json::from_str(&json)
         .map_err(|e| format!("{}: {e}", json_path.display()))?;
 
     // Resolve every face to an image name, remembering the unique names
     let mut names = BTreeSet::new();
     let mut resolved = Vec::new();
-    for voxel in VoxelType::ALL.into_iter().filter(|v| v.is_solid()) {
-        let spec = specs.get(&voxel).ok_or_else(|| format!("no entry for {voxel:?} in voxels.json"))?;
+    for (voxel, spec) in BlockType::ALL.into_iter()
+        .map(|block| (VoxelType::from_block(block), specs.blocks.get(&block)))
+        .chain(TerrainType::ALL.into_iter().map(|terrain| {
+            (VoxelType::from_terrain(terrain), specs.terrain.get(&terrain))
+        }))
+    {
+        let spec = spec.ok_or_else(|| format!("no entry for {voxel:?} in voxels.json"))?;
         if spec.variants().is_empty() {
             return Err(format!("{voxel:?} has an empty list of variants in voxels.json"));
         }
@@ -133,9 +146,9 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
         .map(|(name, handle)| (name.as_str(), sources.texture_index(handle.id()).unwrap()))
         .collect();
 
-    let mut faces = vec![Vec::new(); VoxelType::ALL.len()];
+    let mut faces = HashMap::default();
     for (voxel, variant, direction, name) in resolved {
-        let variants: &mut Vec<[usize; 6]> = &mut faces[voxel as usize];
+        let variants = faces.entry(voxel).or_insert_with(Vec::new);
         if variants.len() <= variant {
             variants.resize(variant + 1, [0; 6]);
         }

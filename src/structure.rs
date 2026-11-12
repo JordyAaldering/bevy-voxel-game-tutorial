@@ -1,4 +1,4 @@
-use crate::{VoxelType, coords::{Aabb, Direction, WorldCoord}};
+use crate::{VoxelType, VoxelTypeItem, coords::{Aabb, Direction, WorldCoord}};
 
 /// Set a coordinate to air to require that space to be cleared by the structure,
 /// otherwise if there happens to be any voxels already at that position it remains.
@@ -34,7 +34,7 @@ impl Structure {
 pub struct StructureVoxel {
     /// Offset relative to the structure origin (can be negative).
     pub pos: WorldCoord,
-    pub voxel: VoxelType,
+    pub voxel: VoxelTypeItem,
     /// Orientation, for voxels that have one (e.g. logs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direction: Option<Direction>,

@@ -1,4 +1,4 @@
-use crate::{TerrainType, VoxelType, noise::{NoiseSettings, NoiseType}};
+use crate::{TerrainType, noise::{NoiseSettings, NoiseType}};
 
 use serde::{Deserialize, Serialize};
 

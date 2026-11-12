@@ -1,4 +1,4 @@
-use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, TerrainType, VoxelType, coords::ChunkCoord, noise::NoiseSettings, ore::Ore, write_atomic};
+use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, TerrainType, coords::ChunkCoord, noise::NoiseSettings, ore::Ore, write_atomic};
 
 use std::{fs, io, path::{Path, PathBuf}};
 

@@ -191,13 +191,25 @@ struct DebugGizmos {
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
-struct VoxelType(u16);
+pub struct VoxelType(u16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum VoxelTypeItem {
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VoxelTypeItem {
     Air,
     Block(BlockType),
     Terrain(TerrainType),
+}
+
+impl Into<VoxelType> for VoxelTypeItem {
+    fn into(self) -> VoxelType {
+        match self {
+            Self::Air => VoxelType::AIR,
+            Self::Block(block) => VoxelType::from_block(block),
+            Self::Terrain(terrain) => VoxelType::from_terrain(terrain),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -205,7 +217,7 @@ enum VoxelTypeItem {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[repr(u16)]
-enum BlockType {
+pub enum BlockType {
     Log,
     Leaves,
     BrickGrey,
@@ -258,7 +270,7 @@ impl TryFrom<u16> for BlockType {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[repr(u16)]
-enum TerrainType {
+pub enum TerrainType {
     Grass,
     Dirt,
     Stone,
@@ -761,8 +773,9 @@ impl VoxelWorld {
                 .expect("Structure generation requires all neighboring chunk data");
             let chunk = Arc::make_mut(chunk);
             let local = coord.local_coord();
-            chunk[local] = voxel.voxel;
-            chunk.density[local.index()] = if voxel.voxel.is_terrain() { Density::FULL } else { Density::EMPTY };
+            let voxel_type: VoxelType = voxel.voxel.into();
+            chunk[local] = voxel_type;
+            chunk.density[local.index()] = if voxel_type != VoxelType::AIR { Density::FULL } else { Density::EMPTY };
         }
     }
 
