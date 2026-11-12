@@ -1,81 +1,101 @@
 {
   "blocks": {
     "log": {
+      "icon": "trunk_top",
       "top": "trunk_top",
       "bottom": "trunk_top",
       "sides": "trunk_side"
     },
     "leaves": {
+      "icon": "leaves",
       "all": "leaves"
     },
     "brickgrey": {
+      "icon": "brick_gray",
       "all": "brick_gray"
     },
     "brickred": {
+      "icon": "brick_red",
       "all": "brick_red"
     },
     "cactus": {
+      "icon": "cactus_top",
       "top": "cactus_top",
       "bottom": "cactus_inside",
       "sides": "cactus_side"
     },
     "cottonblue": {
+      "icon": "cotton_blue",
       "all": "cotton_blue"
     },
     "cottongreen": {
+      "icon": "cotton_green",
       "all": "cotton_green"
     },
     "cottonred": {
+      "icon": "cotton_red",
       "all": "cotton_red"
     },
     "cottonwhite": {
+      "icon": "cotton_tan",
       "all": "cotton_tan"
     },
     "glass": {
+      "icon": "glass",
       "all": "glass"
     }
   },
   "terrain": {
     "grass": {
+      "icon": "grass",
       "all": "grass"
     },
     "dirt": {
+      "icon": "dirt",
       "all": "dirt"
     },
     "stone": {
+      "icon": "stone",
       "all": "stone"
     },
     "stonecoal": {
+      "icon": "stone_coal",
       "variants": [
         { "all": "stone_coal" },
         { "all": "stone_coal_alt" }
       ]
     },
     "stoneiron": {
+      "icon": "stone_iron",
       "variants": [
         { "all": "stone_iron" },
         { "all": "stone_iron_alt" }
       ]
     },
     "stonegold": {
+      "icon": "stone_gold",
       "variants": [
         { "all": "stone_gold" },
         { "all": "stone_gold_alt" }
       ]
     },
     "stonediamond": {
+      "icon": "stone_diamond",
       "variants": [
         { "all": "stone_diamond" },
         { "all": "stone_diamond_alt" }
       ]
     },
     "sand": {
+      "icon": "sand",
       "all": "sand"
     },
     "snow": {
+      "icon": "snow",
       "all": "snow"
     },
     "ice": {
+      "icon": "ice",
       "all": "ice"
     }
   }

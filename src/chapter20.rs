@@ -25,7 +25,7 @@ use crate::{
     screenshot::ScreenshotPlugin,
     structure::Structure,
     telemetry::TelemetryPlugin,
-    voxel_atlas::{VoxelAtlas, build_voxel_atlas},
+    voxel_atlas::{VoxelAtlas, VoxelAtlasAssets, build_voxel_atlas},
 };
 
 use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, sync::Arc};
@@ -35,7 +35,7 @@ use bevy::{
     prelude::*,
     app::OnAppExitSystems,
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
-    input::mouse::AccumulatedMouseMotion,
+    input::mouse::{AccumulatedMouseMotion, MouseWheel},
     platform::collections::HashMap,
     tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -841,10 +841,13 @@ mod inventory {
     impl Plugin for HotbarPlugin {
         fn build(&self, app: &mut App) {
             app.init_resource::<Hotbar>()
-                .add_systems(Startup, spawn_hotbar)
+                .add_systems(Startup, spawn_hotbar.after(spawn_player))
                 .add_systems(Update, (
-                    hotbar_keyboard_input.run_if(game_view_captured),
-                    update_hotbar_ui,
+                    (
+                        hotbar_keyboard_input,
+                        hotbar_scroll_input
+                    ).run_if(game_view_captured),
+                    update_hotbar_ui.after(hotbar_keyboard_input),
                 ));
         }
     }
@@ -860,7 +863,6 @@ mod inventory {
     #[derive(Component)]
     struct HotbarSlot {
         index: usize,
-        slot: VoxelTypeItem,
     }
 
     impl Default for Hotbar {
@@ -892,17 +894,22 @@ mod inventory {
     fn spawn_hotbar(
         mut commands: Commands,
         hotbar: Res<Hotbar>,
+        atlas: Res<VoxelAtlasAssets>,
         voxel_atlas: Res<SharedVoxelAtlas>,
+        camera: Single<Entity, With<PlayerCamera>>,
     ) {
-        commands.spawn(Node {
-            width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::FlexEnd,
-            align_items: AlignItems::Center,
-            padding: px(24).bottom(),
-            ..default()
-        })
+        commands.spawn((
+            UiTargetCamera(*camera),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::FlexEnd,
+                align_items: AlignItems::Center,
+                padding: px(24).bottom(),
+                ..default()
+            },
+        ))
         .with_children(|ui| {
             ui.spawn((
                 Name::new("Hotbar"),
@@ -918,15 +925,10 @@ mod inventory {
                 for (index, slot) in hotbar.slots.iter().copied().enumerate() {
                     let voxel_type: VoxelType = slot.into();
 
-                    // Use the top face as the block's icon.
-                    let texture_index = voxel_atlas.0.texture(
-                        voxel_type,
-                        Direction::Top,
-                        0,
-                    );
+                    let texture_index = voxel_atlas.0.icon(voxel_type);
 
                     bar.spawn((
-                        HotbarSlot { index, slot },
+                        HotbarSlot { index },
                         Node {
                             width: px(48),
                             height: px(48),
@@ -938,6 +940,13 @@ mod inventory {
                     ))
                     .with_children(|slot| {
                         slot.spawn((
+                            ImageNode::from_atlas_image(
+                                atlas.image.clone(),
+                                TextureAtlas {
+                                    layout: atlas.layout.clone(),
+                                    index: texture_index,
+                                },
+                            ),
                             Node {
                                 width: px(36),
                                 height: px(36),
@@ -973,6 +982,19 @@ mod inventory {
                 return;
             }
         }
+    }
+
+    fn hotbar_scroll_input(
+        mut mouse: MessageReader<MouseWheel>,
+        mut hotbar: ResMut<Hotbar>,
+    ) {
+        for event in mouse.read() {
+            if event.y < 0.0 {
+                hotbar.selected = (hotbar.selected + 1) % 10;
+            } else if event.y > 0.0 {
+                hotbar.selected = (hotbar.selected + 9) % 10;
+            }
+        };
     }
 
     fn update_hotbar_ui(
@@ -1123,11 +1145,19 @@ fn setup_chunk_material(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let (atlas, image) = build_voxel_atlas(&mut images)
         .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
+
     let texture = images.add(image);
+    let layout = atlas_layouts.add(atlas.layout().clone());
+
     commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
+    commands.insert_resource(VoxelAtlasAssets {
+        image: texture.clone(),
+        layout,
+    });
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),

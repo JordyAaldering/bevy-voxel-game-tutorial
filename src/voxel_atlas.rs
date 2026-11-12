@@ -12,16 +12,24 @@ use bevy::{
 
 const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
 
+/// A voxel's inventory icon and either one set of faces or multiple variants.
+#[derive(serde::Deserialize)]
+struct VoxelSpec {
+    icon: String,
+    #[serde(flatten)]
+    faces: VoxelFaces,
+}
+
 /// A voxel is either described by a single set of faces, or by a list of
 /// alternative looks of which one is picked per voxel position.
 #[derive(serde::Deserialize)]
-#[serde(untagged)]
-enum VoxelSpec {
+#[serde(untagged, deny_unknown_fields)]
+enum VoxelFaces {
     Faces(FaceSpec),
     Variants { variants: Vec<FaceSpec> },
 }
 
-impl VoxelSpec {
+impl VoxelFaces {
     fn variants(&self) -> &[FaceSpec] {
         match self {
             Self::Faces(spec) => std::slice::from_ref(spec),
@@ -31,17 +39,28 @@ impl VoxelSpec {
 }
 
 #[derive(Resource)]
+pub struct VoxelAtlasAssets {
+    pub image: Handle<Image>,
+    pub layout: Handle<TextureAtlasLayout>,
+}
+
+#[derive(Resource)]
 pub struct VoxelAtlas {
     layout: TextureAtlasLayout,
+    /// Atlas index per voxel type, used for inventory icons.
+    icons: HashMap<VoxelType, usize>,
     /// Atlas index per voxel type, variant, and direction. Air is never rendered and has no variants.
     faces: HashMap<VoxelType, Vec<[usize; 6]>>,
 }
 
 impl VoxelAtlas {
+    pub fn icon(&self, voxel: VoxelType) -> usize {
+        *self.icons.get(&voxel).expect("voxel has no atlas icon")
+    }
+
     /// `variant_seed` picks one of the voxel's variants; the same seed always gives the same variant.
-    #[allow(unused)]
     pub fn texture(&self, voxel: VoxelType, direction: Direction, variant_seed: u32) -> usize {
-        let variants = self.faces.get(&voxel).expect("solid voxel has no atlas entry");
+        let variants = self.faces.get(&voxel).expect("voxel has no atlas entry");
         variants[variant_seed as usize % variants.len()][direction as usize]
     }
 
@@ -99,18 +118,26 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
     // Resolve every face to an image name, remembering the unique names
     let mut names = BTreeSet::new();
     let mut resolved = Vec::new();
+    let mut resolved_icons = Vec::new();
+
     for (voxel, spec) in BlockType::ALL.into_iter()
         .map(|block| (VoxelType::from_block(block), specs.blocks.get(&block)))
         .chain(TerrainType::ALL.into_iter().map(|terrain| {
             (VoxelType::from_terrain(terrain), specs.terrain.get(&terrain))
         }))
     {
-        let spec = spec.ok_or_else(|| format!("no entry for {voxel:?} in voxels.json"))?;
-        if spec.variants().is_empty() {
+        let Some(spec) = spec else {
+            return Err(format!("no entry for {voxel:?} in voxels.json"));
+        };
+
+        names.insert(spec.icon.clone());
+        resolved_icons.push((voxel, spec.icon.clone()));
+
+        if spec.faces.variants().is_empty() {
             return Err(format!("{voxel:?} has an empty list of variants in voxels.json"));
         }
 
-        for (variant, face_spec) in spec.variants().iter().enumerate() {
+        for (variant, face_spec) in spec.faces.variants().iter().enumerate() {
             for direction in Direction::iter() {
                 let name = face_spec.resolve(direction)
                     .ok_or_else(|| format!("{voxel:?} variant {variant} has no image for its {direction:?} face"))?;
@@ -146,6 +173,10 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
         .map(|(name, handle)| (name.as_str(), sources.texture_index(handle.id()).unwrap()))
         .collect();
 
+    let icons = resolved_icons.into_iter()
+        .map(|(voxel, name)| (voxel, indices[name.as_str()]))
+        .collect();
+
     let mut faces = HashMap::default();
     for (voxel, variant, direction, name) in resolved {
         let variants = faces.entry(voxel).or_insert_with(Vec::new);
@@ -156,5 +187,5 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
         variants[variant][direction as usize] = indices[name.as_str()];
     }
 
-    Ok((VoxelAtlas { layout, faces }, image))
+    Ok((VoxelAtlas { layout, icons, faces }, image))
 }
