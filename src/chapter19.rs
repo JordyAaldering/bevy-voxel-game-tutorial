@@ -154,35 +154,6 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[repr(u16)]
-pub enum VoxelType {
-    Air,
-    Grass,
-    Dirt,
-    Stone,
-    StoneCoal,
-    StoneIron,
-    StoneGold,
-    StoneDiamond,
-    Log,
-    Leaves,
-    BrickGrey,
-    BrickRed,
-    Cactus,
-    CottonBlue,
-    CottonGreen,
-    CottonRed,
-    CottonWhite,
-    Sand,
-    Snow,
-    Glass,
-    Ice,
-}
-
 /// A compact representation of a voxel type.
 ///
 /// A voxel can represent air, a block type, or a terrain type. These categories
@@ -216,11 +187,120 @@ pub enum VoxelType {
 /// Most operations can work directly on the packed representation using
 /// bit masks, avoiding the need to unpack the value. The `unpack` method is
 /// provided for cases where the actual `BlockType` or `TerrainType` is needed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct VoxelType2(u16);
+struct VoxelType(u16);
 
-impl VoxelType2 {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum VoxelTypeItem {
+    Air,
+    Block(BlockType),
+    Terrain(TerrainType),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u16)]
+enum BlockType {
+    Log,
+    Leaves,
+    BrickGrey,
+    BrickRed,
+    Cactus,
+    CottonBlue,
+    CottonGreen,
+    CottonRed,
+    CottonWhite,
+    Glass,
+}
+
+impl BlockType {
+    const ALL: [Self; 10] = [
+        Self::Log,
+        Self::Leaves,
+        Self::BrickGrey,
+        Self::BrickRed,
+        Self::Cactus,
+        Self::CottonBlue,
+        Self::CottonGreen,
+        Self::CottonRed,
+        Self::CottonWhite,
+        Self::Glass,
+    ];
+}
+
+impl TryFrom<u16> for BlockType {
+    type Error = String;
+
+    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Log,
+            1 => Self::Leaves,
+            2 => Self::BrickGrey,
+            3 => Self::BrickRed,
+            4 => Self::Cactus,
+            5 => Self::CottonBlue,
+            6 => Self::CottonGreen,
+            7 => Self::CottonRed,
+            8 => Self::CottonWhite,
+            9 => Self::Glass,
+            _ => return Err(format!("Invalid block type: {value}")),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u16)]
+enum TerrainType {
+    Grass,
+    Dirt,
+    Stone,
+    StoneCoal,
+    StoneIron,
+    StoneGold,
+    StoneDiamond,
+    Sand,
+    Snow,
+    Ice,
+}
+
+impl TerrainType {
+    const ALL: [Self; 10] = [
+        Self::Grass,
+        Self::Dirt,
+        Self::Stone,
+        Self::StoneCoal,
+        Self::StoneIron,
+        Self::StoneGold,
+        Self::StoneDiamond,
+        Self::Sand,
+        Self::Snow,
+        Self::Ice,
+    ];
+}
+
+impl TryFrom<u16> for TerrainType {
+    type Error = String;
+
+    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Grass,
+            1 => Self::Dirt,
+            2 => Self::Stone,
+            3 => Self::StoneCoal,
+            4 => Self::StoneIron,
+            5 => Self::StoneGold,
+            6 => Self::StoneDiamond,
+            7 => Self::Sand,
+            8 => Self::Snow,
+            9 => Self::Ice,
+            _ => return Err(format!("Invalid terrain type: {value}")),
+        })
+    }
+}
+
+impl VoxelType {
     /// The lower 13 bits are the type, the upper 3 bits are the category.
     const TYPE_MASK: u16 = 0x1FFF;
     const CATEGORY_MASK: u16 = 0xE000;
@@ -228,6 +308,14 @@ impl VoxelType2 {
     const AIR: u16 = 0b000 << 13;
     const BLOCK: u16 = 0b001 << 13;
     const TERRAIN: u16 = 0b010 << 13;
+
+    pub const fn is_transparent(self) -> bool {
+        self.is_air()
+    }
+
+    pub const fn is_solid(self) -> bool {
+        !self.is_air()
+    }
 
     pub const fn is_air(self) -> bool {
         (self.0 & Self::CATEGORY_MASK) == Self::AIR
@@ -266,94 +354,6 @@ impl VoxelType2 {
             Self::TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
             _ => return Err(format!("Invalid voxel discriminant: {discriminant:#X}")),
         })
-    }
-}
-
-enum VoxelTypeItem {
-    Air,
-    Block(BlockType),
-    Terrain(TerrainType),
-}
-
-#[repr(u16)]
-enum BlockType {
-    Bricks,
-}
-
-impl TryFrom<u16> for BlockType {
-    type Error = String;
-
-    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Bricks),
-            _ => Err(format!("Invalid block type: {value}")),
-        }
-    }
-}
-
-#[repr(u16)]
-enum TerrainType {
-    Grass,
-}
-
-impl TryFrom<u16> for TerrainType {
-    type Error = String;
-
-    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Grass),
-            _ => Err(format!("Invalid terrain type: {value}")),
-        }
-    }
-}
-
-impl VoxelType {
-    const ALL: [Self; 21] = [
-        Self::Air,
-        Self::Grass,
-        Self::Dirt,
-        Self::Stone,
-        Self::StoneCoal,
-        Self::StoneIron,
-        Self::StoneGold,
-        Self::StoneDiamond,
-        Self::Log,
-        Self::Leaves,
-        Self::BrickGrey,
-        Self::BrickRed,
-        Self::Cactus,
-        Self::CottonBlue,
-        Self::CottonGreen,
-        Self::CottonRed,
-        Self::CottonWhite,
-        Self::Sand,
-        Self::Snow,
-        Self::Glass,
-        Self::Ice,
-    ];
-
-    fn is_transparent(self) -> bool {
-        matches!(self, VoxelType::Air)
-    }
-
-    fn is_solid(self) -> bool {
-        !matches!(self, VoxelType::Air)
-    }
-
-    fn is_terrain(self) -> bool {
-        match self {
-            Self::Grass |
-            Self::Dirt |
-            Self::Stone |
-            Self::StoneCoal |
-            Self::StoneIron |
-            Self::StoneGold |
-            Self::StoneDiamond |
-            Self::Sand |
-            Self::Snow |
-            Self::Ice => true,
-            _ => false,
-        }
     }
 }
 
