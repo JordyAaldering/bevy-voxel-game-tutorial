@@ -1037,7 +1037,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
         for z in 0..CHUNK_WIDTH {
             for y in 0..CHUNK_HEIGHT {
                 let coord = VoxelCoord::new(x, y, z);
-                if chunk[coord].is_terrain_id(TerrainType::Stone) {
+                if !chunk[coord].is_terrain_id(TerrainType::Stone) {
                     continue;
                 }
 

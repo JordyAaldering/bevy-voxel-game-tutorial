@@ -1,4 +1,4 @@
-use crate::{VoxelType, VoxelTypeItem, coords::{Aabb, Direction, WorldCoord}};
+use crate::{VoxelTypeItem, coords::{Aabb, Direction, WorldCoord}};
 
 /// Set a coordinate to air to require that space to be cleared by the structure,
 /// otherwise if there happens to be any voxels already at that position it remains.

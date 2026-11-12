@@ -37,7 +37,7 @@
   },
   "terrain": {
     "grass": {
-      "all": "dirt_grass"
+      "all": "grass"
     },
     "dirt": {
       "all": "dirt"

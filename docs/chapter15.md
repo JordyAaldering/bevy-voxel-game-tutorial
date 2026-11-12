@@ -23,7 +23,7 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
    `VoxelType::ALL` lists all variants, and `voxel as usize` is used as a table index.
 3. **Describe the faces in JSON.** A single `assets/voxels/voxels.json` maps each voxel type to its images:
    ```json
-   "grass": { "top": "grass_top", "bottom": "dirt", "sides": "grass_side" },
+   "grass": { "top": "grass", "bottom": "dirt", "sides": "grass_side" },
    "dirt":  { "all": "dirt" }
    ```
    Keys are `all`, `top`, `bottom`, `sides`, `front`, `back`, `left`, `right`.

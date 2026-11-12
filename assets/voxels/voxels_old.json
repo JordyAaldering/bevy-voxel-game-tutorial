@@ -1,6 +1,6 @@
 {
   "grass": {
-    "top": "grass_top",
+    "top": "grass",
     "bottom": "dirt",
     "sides": "dirt_grass"
   },
