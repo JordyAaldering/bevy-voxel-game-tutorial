@@ -201,6 +201,9 @@ enum VoxelTypeItem {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[repr(u16)]
 enum BlockType {
     Log,
@@ -251,6 +254,9 @@ impl TryFrom<u16> for BlockType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[repr(u16)]
 enum TerrainType {
     Grass,
@@ -305,9 +311,19 @@ impl VoxelType {
     const TYPE_MASK: u16 = 0x1FFF;
     const CATEGORY_MASK: u16 = 0xE000;
 
-    const AIR: u16 = 0b000 << 13;
-    const BLOCK: u16 = 0b001 << 13;
-    const TERRAIN: u16 = 0b010 << 13;
+    const DISCRIMINANT_AIR: u16 = 0b000 << 13;
+    const DISCRIMINANT_BLOCK: u16 = 0b001 << 13;
+    const DISCRIMINANT_TERRAIN: u16 = 0b010 << 13;
+
+    pub const AIR: Self = Self(Self::DISCRIMINANT_AIR);
+
+    pub const fn from_block(block: BlockType) -> Self {
+        Self(Self::DISCRIMINANT_BLOCK | (block as u16))
+    }
+
+    pub const fn from_terrain(terrain: TerrainType) -> Self {
+        Self(Self::DISCRIMINANT_TERRAIN | (terrain as u16))
+    }
 
     pub const fn is_transparent(self) -> bool {
         self.is_air()
@@ -318,15 +334,23 @@ impl VoxelType {
     }
 
     pub const fn is_air(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::AIR
+        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_AIR
     }
 
     pub const fn is_block(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::BLOCK
+        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_BLOCK
     }
 
     pub const fn is_terrain(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::TERRAIN
+        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_TERRAIN
+    }
+
+    pub const fn is_block_id(self, id: BlockType) -> bool {
+        self.is_block() && (self.0 & Self::TYPE_MASK) == id as u16
+    }
+
+    pub const fn is_terrain_id(self, id: TerrainType) -> bool {
+        self.is_terrain() && (self.0 & Self::TYPE_MASK) == id as u16
     }
 
     pub const fn block_id(self) -> Option<u16> {
@@ -349,9 +373,9 @@ impl VoxelType {
         let discriminant = 0xE000 & self.0;
         let payload = 0x1FFF & self.0;
         Ok(match discriminant {
-            Self::AIR => VoxelTypeItem::Air,
-            Self::BLOCK => VoxelTypeItem::Block(BlockType::try_from(payload)?),
-            Self::TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
+            Self::DISCRIMINANT_AIR => VoxelTypeItem::Air,
+            Self::DISCRIMINANT_BLOCK => VoxelTypeItem::Block(BlockType::try_from(payload)?),
+            Self::DISCRIMINANT_TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
             _ => return Err(format!("Invalid voxel discriminant: {discriminant:#X}")),
         })
     }
@@ -957,18 +981,18 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
             let height = column.height;
 
             let pos = VoxelCoord::new(x, height, z);
-            chunk[pos] = column.surface;
+            chunk[pos] = VoxelType::from_terrain(column.surface);
             chunk.density[pos.index()] = Density::FULL;
 
             for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
                 let pos = VoxelCoord::new(x, y, z);
-                chunk[pos] = column.subsurface;
+                chunk[pos] = VoxelType::from_terrain(column.subsurface);
                 chunk.density[pos.index()] = Density::FULL;
             }
 
             for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
                 let pos = VoxelCoord::new(x, y, z);
-                chunk[pos] = VoxelType::Stone;
+                chunk[pos] = VoxelType::from_terrain(TerrainType::Stone);
                 chunk.density[pos.index()] = Density::FULL;
             }
         }
@@ -986,7 +1010,7 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
             for y in 1..=height {
                 let pos = VoxelCoord::new(x, y, z);
                 if noise[pos.index()] > config.caves.threshold {
-                    chunk[pos] = VoxelType::Air;
+                    chunk[pos] = VoxelType::AIR;
                     chunk.density[pos.index()] = Density::EMPTY;
                 }
             }
@@ -1000,7 +1024,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
         for z in 0..CHUNK_WIDTH {
             for y in 0..CHUNK_HEIGHT {
                 let coord = VoxelCoord::new(x, y, z);
-                if chunk[coord] != VoxelType::Stone {
+                if chunk[coord].is_terrain_id(TerrainType::Stone) {
                     continue;
                 }
 
@@ -1011,7 +1035,7 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
                 {
                     ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
                 }) {
-                    chunk[coord] = ore;
+                    chunk[coord] = VoxelType::from_terrain(ore);
                     chunk.density[coord.index()] = Density::FULL;
                 }
             }
@@ -1050,7 +1074,7 @@ fn build_voxel_mesh(
     let mut voxel_mesh = MeshData::new(atlas.layout());
 
     for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, v)| *v != VoxelType::Air && !v.is_terrain())
+        .filter(|(_, v)| v.is_block())
     {
         for direction in Direction::iter() {
             if is_face_visible(neighbors, chunk, voxel_pos, direction) {
@@ -1239,7 +1263,7 @@ fn poll_chunk_generation_tasks(
                 for origin in origins {
                     // A cave may have removed the surface below the tree.
                     let ground = origin + Direction::Bottom;
-                    if world.chunks[&chunk.coord][ground.local_coord()] == VoxelType::Air {
+                    if world.chunks[&chunk.coord][ground.local_coord()] == VoxelType::AIR {
                         continue;
                     }
                     world.place_structure(&structures.tree, origin);
@@ -1611,11 +1635,11 @@ fn break_place_block(
     if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(&world, origin, look, INTERACTION_DISTANCE) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
-            world.set_voxel(&mut commands, coord, VoxelType::Air);
+            world.set_voxel(&mut commands, coord, VoxelType::AIR);
         } else /* if do_place */ {
             let neighbor = coord.shift(direction);
             if world.get_voxel(neighbor).is_some() {
-                world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
+                world.set_voxel(&mut commands, neighbor, VoxelType::from_terrain(TerrainType::Dirt));
             }
         }
     }

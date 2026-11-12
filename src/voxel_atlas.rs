@@ -12,37 +12,6 @@ use bevy::{
 
 const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
 
-/// Describes which image is used on each face of a voxel, as found in `voxels.json`.
-/// More specific faces take precedence: `front`/`back`/`left`/`right`, then
-/// `sides` (horizontal faces only) or `top`/`bottom`, then `all`.
-#[derive(Default, serde::Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct FaceSpec {
-    all: Option<String>,
-    top: Option<String>,
-    bottom: Option<String>,
-    sides: Option<String>,
-    front: Option<String>,
-    back: Option<String>,
-    left: Option<String>,
-    right: Option<String>,
-}
-
-impl FaceSpec {
-    fn resolve(&self, direction: Direction) -> Option<&str> {
-        match direction {
-            Direction::Top    => self.top.as_ref(),
-            Direction::Bottom => self.bottom.as_ref(),
-            Direction::Front  => self.front.as_ref().or(self.sides.as_ref()),
-            Direction::Back   => self.back.as_ref().or(self.sides.as_ref()),
-            Direction::Left   => self.left.as_ref().or(self.sides.as_ref()),
-            Direction::Right  => self.right.as_ref().or(self.sides.as_ref()),
-        }
-        .or(self.all.as_ref())
-        .map(String::as_str)
-    }
-}
-
 /// A voxel is either described by a single set of faces, or by a list of
 /// alternative looks of which one is picked per voxel position.
 #[derive(serde::Deserialize)]
@@ -78,6 +47,37 @@ impl VoxelAtlas {
 
     pub fn layout(&self) -> &TextureAtlasLayout {
         &self.layout
+    }
+}
+
+/// Describes which image is used on each face of a voxel, as found in `voxels.json`.
+/// More specific faces take precedence: `front`/`back`/`left`/`right`, then
+/// `sides` (horizontal faces only) or `top`/`bottom`, then `all`.
+#[derive(Default, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct FaceSpec {
+    all: Option<String>,
+    top: Option<String>,
+    bottom: Option<String>,
+    sides: Option<String>,
+    front: Option<String>,
+    back: Option<String>,
+    left: Option<String>,
+    right: Option<String>,
+}
+
+impl FaceSpec {
+    fn resolve(&self, direction: Direction) -> Option<&str> {
+        match direction {
+            Direction::Top    => self.top.as_ref(),
+            Direction::Bottom => self.bottom.as_ref(),
+            Direction::Front  => self.front.as_ref().or(self.sides.as_ref()),
+            Direction::Back   => self.back.as_ref().or(self.sides.as_ref()),
+            Direction::Left   => self.left.as_ref().or(self.sides.as_ref()),
+            Direction::Right  => self.right.as_ref().or(self.sides.as_ref()),
+        }
+        .or(self.all.as_ref())
+        .map(String::as_str)
     }
 }
 

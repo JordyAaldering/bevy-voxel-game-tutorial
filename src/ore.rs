@@ -1,4 +1,4 @@
-use crate::{VoxelType, noise::{NoiseSettings, NoiseType}};
+use crate::{TerrainType, VoxelType, noise::{NoiseSettings, NoiseType}};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ pub(crate) const CELL_SIZE_FACTOR: f32 = 4.0;
 pub struct Ore {
     pub name: String,
     /// The voxel that replaces stone.
-    pub voxel: VoxelType,
+    pub voxel: TerrainType,
     /// Lowest world height (y) the ore is found at, inclusive.
     pub min_height: i32,
     /// Highest world height (y) the ore is found at, inclusive.
