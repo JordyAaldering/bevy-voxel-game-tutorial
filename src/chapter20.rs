@@ -834,6 +834,8 @@ impl IndexMut<&Chunk> for VoxelWorld {
 }
 
 mod hotbar {
+    use crate::inventory::HeldInventoryItem;
+
     use super::*;
 
     pub struct HotbarPlugin;
@@ -845,9 +847,12 @@ mod hotbar {
                 .add_systems(Update, (
                     (
                         hotbar_keyboard_input,
-                        hotbar_scroll_input
+                        hotbar_scroll_input,
                     ).run_if(game_view_captured),
-                    update_hotbar_ui.after(hotbar_keyboard_input),
+                    (
+                        update_hotbar_ui,
+                        update_hotbar_icons,
+                    ).after(hotbar_keyboard_input),
                 ));
         }
     }
@@ -862,6 +867,11 @@ mod hotbar {
     /// and a visual indicator if it is selected.
     #[derive(Component)]
     struct HotbarSlot {
+        index: usize,
+    }
+
+    #[derive(Component)]
+    struct HotbarIcon {
         index: usize,
     }
 
@@ -900,6 +910,8 @@ mod hotbar {
     ) {
         commands.spawn((
             UiTargetCamera(*camera),
+            GlobalZIndex(20),
+            Pickable::IGNORE,
             Node {
                 width: percent(100),
                 height: percent(100),
@@ -938,8 +950,10 @@ mod hotbar {
                         },
                         BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 0.9)),
                     ))
+                    .observe(on_hotbar_slot_clicked)
                     .with_children(|slot| {
                         slot.spawn((
+                            HotbarIcon { index },
                             ImageNode::from_atlas_image(
                                 atlas.image.clone(),
                                 TextureAtlas {
@@ -952,11 +966,48 @@ mod hotbar {
                                 height: px(36),
                                 ..default()
                             },
+                            Pickable::IGNORE,
                         ));
                     });
                 }
             });
         });
+    }
+
+    fn on_hotbar_slot_clicked(
+        mut click: On<PointerClick>,
+        slots: Query<&HotbarSlot>,
+        mut hotbar: ResMut<Hotbar>,
+        mut held: ResMut<HeldInventoryItem>,
+    ) {
+        let Ok(slot) = slots.get(click.entity) else {
+            return;
+        };
+
+        if let Some(item) = held.0.take() {
+            hotbar.slots[slot.index] = item;
+        }
+
+        click.propagate(false);
+    }
+
+    fn update_hotbar_icons(
+        hotbar: Res<Hotbar>,
+        voxel_atlas: Res<SharedVoxelAtlas>,
+        mut icons: Query<(&HotbarIcon, &mut ImageNode)>,
+    ) {
+        if !hotbar.is_changed() {
+            return;
+        }
+
+        for (icon, mut image) in &mut icons {
+            let voxel: VoxelType = hotbar.slots[icon.index].into();
+            let texture_index = voxel_atlas.0.icon(voxel);
+
+            if let Some(texture_atlas) = image.texture_atlas.as_mut() {
+                texture_atlas.index = texture_index;
+            }
+        }
     }
 
     fn hotbar_keyboard_input(
@@ -1017,25 +1068,18 @@ mod hotbar {
 
 mod inventory {
     use super::*;
+    use bevy::{
+        asset::uuid::Uuid,
+        camera::NormalizedRenderTarget,
+        picking::{
+            PickingSystems,
+            pointer::{Location, PointerAction, PointerButton, PointerId, PointerInput, PointerLocation},
+        },
+    };
+
+    const INVENTORY_POINTER: PointerId = PointerId::Custom(Uuid::from_u128(0x513fdb1910924cd3b8855f7cd53a1841));
 
     pub struct CreativeInventoryPlugin;
-
-    impl Plugin for CreativeInventoryPlugin {
-        fn build(&self, app: &mut App) {
-            app.init_resource::<CreativeInventoryState>()
-                .add_systems(
-                    Startup,
-                    spawn_creative_inventory.after(spawn_player),
-                )
-                .add_systems(
-                    Update,
-                    (
-                        toggle_creative_inventory,
-                        scroll_creative_inventory,
-                    ),
-                );
-        }
-    }
 
     #[derive(self::Default, Resource)]
     pub struct CreativeInventoryState {
@@ -1048,6 +1092,38 @@ mod inventory {
 
     #[derive(Component)]
     struct InventoryGrid;
+
+    #[derive(self::Default, Resource)]
+    pub struct HeldInventoryItem(pub Option<VoxelTypeItem>);
+
+    #[derive(Component)]
+    struct CreativeInventoryItem(VoxelTypeItem);
+
+    #[derive(Component)]
+    struct CursorItemPreview;
+
+    impl Plugin for CreativeInventoryPlugin {
+        fn build(&self, app: &mut App) {
+            app.init_resource::<CreativeInventoryState>()
+                .init_resource::<HeldInventoryItem>()
+                .add_systems(
+                    Startup,
+                    (spawn_creative_inventory.after(spawn_player), spawn_inventory_pointer),
+                )
+                .add_systems(First, forward_inventory_pointer.in_set(PickingSystems::PostInput))
+                .add_systems(PreUpdate, sync_inventory_pointer
+                    .after(PickingSystems::ProcessInput)
+                    .before(PickingSystems::Backend))
+                .add_systems(
+                    Update,
+                    (
+                        toggle_creative_inventory,
+                        scroll_creative_inventory,
+                        update_cursor_preview,
+                    ),
+                );
+        }
+    }
 
     fn spawn_creative_inventory(
         mut commands: Commands,
@@ -1076,7 +1152,31 @@ mod inventory {
         ))
         .with_children(|root| {
             root.spawn((
+                Name::new("Cursor Item Preview"),
+                CursorItemPreview,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    top: px(0),
+                    width: px(36),
+                    height: px(36),
+                    display: Display::None,
+                    ..default()
+                },
+                ImageNode::from_atlas_image(
+                    atlas.image.clone(),
+                    TextureAtlas {
+                        layout: atlas.layout.clone(),
+                        index: 0,
+                    },
+                ),
+                GlobalZIndex(30),
+                Pickable::IGNORE,
+            ));
+
+            root.spawn((
                 Name::new("Inventory Panel"),
+                ZIndex(1),
                 Node {
                     width: px(640),
                     max_width: percent(90),
@@ -1132,6 +1232,7 @@ mod inventory {
                         let texture_index = voxel_atlas.0.icon(voxel);
 
                         grid.spawn((
+                            CreativeInventoryItem(item),
                             Node {
                                 height: px(88),
                                 flex_direction: FlexDirection::Column,
@@ -1142,6 +1243,7 @@ mod inventory {
                             },
                             BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
                         ))
+                        .observe(on_inventory_item_clicked)
                         .with_children(|cell| {
                             cell.spawn((
                                 ImageNode::from_atlas_image(
@@ -1156,6 +1258,7 @@ mod inventory {
                                     height: px(44),
                                     ..default()
                                 },
+                                Pickable::IGNORE,
                             ));
 
                             cell.spawn((
@@ -1164,17 +1267,200 @@ mod inventory {
                                     font_size: 12.0.into(),
                                     ..default()
                                 },
+                                Pickable::IGNORE,
                             ));
                         });
                     }
                 });
             });
+
+            root.spawn((
+                Name::new("Inventory Backdrop"),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(0),
+                    top: px(0),
+                    bottom: px(0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+            ))
+            .observe(clear_held_item);
         });
+    }
+
+    fn on_inventory_item_clicked(
+        mut click: On<PointerClick>,
+        items: Query<&CreativeInventoryItem>,
+        mut held: ResMut<HeldInventoryItem>,
+    ) {
+        let Ok(item) = items.get(click.entity) else {
+            return;
+        };
+
+        held.0 = if held.0 == Some(item.0) {
+            None
+        } else {
+            Some(item.0)
+        };
+
+        click.propagate(false);
+    }
+
+    fn clear_held_item(
+        mut click: On<PointerClick>,
+        mut held: ResMut<HeldInventoryItem>,
+    ) {
+        held.0 = None;
+        click.propagate(false);
+    }
+
+    fn spawn_inventory_pointer(mut commands: Commands) {
+        commands.spawn(INVENTORY_POINTER);
+    }
+
+    fn cancel_inventory_pointer(commands: &mut Commands, location: Location) {
+        commands.write_message(PointerInput::new(INVENTORY_POINTER, location.clone(), PointerAction::Cancel));
+        for button in PointerButton::iter() {
+            commands.write_message(PointerInput::new(INVENTORY_POINTER, location.clone(), PointerAction::Release(button)));
+        }
+    }
+
+    fn game_view_position(rect: Option<egui::Rect>, position: Vec2, viewport_size: Vec2) -> Option<Vec2> {
+        let rect = rect?;
+        if !rect.contains(egui::pos2(position.x, position.y)) || rect.width() <= 0.0 || rect.height() <= 0.0 {
+            return None;
+        }
+        let local = position - vec2(rect.min.x, rect.min.y);
+        Some(local / vec2(rect.width(), rect.height()) * viewport_size)
+    }
+
+    fn forward_inventory_pointer(
+        mut commands: Commands,
+        mut inputs: MessageReader<PointerInput>,
+        editor: Res<EditorState>,
+        inventory: Res<CreativeInventoryState>,
+        camera: Single<&Camera, With<PlayerCamera>>,
+        window: Single<&Window, With<PrimaryWindow>>,
+        mut pointers: Query<(&PointerId, &mut PointerLocation)>,
+    ) {
+        let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
+            return;
+        };
+        let viewport_size = camera.logical_viewport_size();
+        let map_position = |position| {
+            (inventory.open && editor.is_game_view_visible() && editor.is_game_view_active())
+                .then(|| viewport_size.and_then(|size| game_view_position(editor.get_game_view().rect, position, size)))
+                .flatten()
+        };
+        let target = NormalizedRenderTarget::Image(editor.get_game_view().image.clone().into());
+        for input in inputs.read().filter(|input| input.pointer_id == PointerId::Mouse) {
+            let Some(position) = map_position(input.location.position) else {
+                if let Some(location) = pointer.location.take() {
+                    cancel_inventory_pointer(&mut commands, location);
+                }
+                continue;
+            };
+            let location = Location { target: target.clone(), position };
+            let previous = pointer.location.as_ref().map(|location| location.position).unwrap_or(position);
+            pointer.location = Some(location.clone());
+            if matches!(input.action, PointerAction::Move { .. }) || previous != position {
+                commands.write_message(PointerInput::new(
+                    INVENTORY_POINTER, location.clone(), PointerAction::Move { delta: position - previous },
+                ));
+            }
+            if !matches!(input.action, PointerAction::Move { .. }) {
+                commands.write_message(PointerInput::new(INVENTORY_POINTER, location, input.action));
+            }
+        }
+
+        let position = window.cursor_position().and_then(map_position);
+        if let Some(position) = position {
+            let location = Location { target, position };
+            if pointer.location.as_ref() != Some(&location) {
+                let previous = pointer.location.as_ref().map(|location| location.position).unwrap_or(position);
+                pointer.location = Some(location.clone());
+                commands.write_message(PointerInput::new(
+                    INVENTORY_POINTER, location, PointerAction::Move { delta: position - previous },
+                ));
+            }
+        } else if let Some(location) = pointer.location.take() {
+            cancel_inventory_pointer(&mut commands, location);
+        }
+    }
+
+    fn sync_inventory_pointer(
+        editor: Res<EditorState>,
+        inventory: Res<CreativeInventoryState>,
+        camera: Single<&Camera, With<PlayerCamera>>,
+        window: Single<&Window, With<PrimaryWindow>>,
+        mut pointers: Query<(&PointerId, &mut PointerLocation)>,
+    ) {
+        let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
+            return;
+        };
+        let location = if inventory.open && editor.is_game_view_visible() && editor.is_game_view_active() {
+            window.cursor_position()
+                .zip(camera.logical_viewport_size())
+                .and_then(|(position, size)| game_view_position(editor.get_game_view().rect, position, size))
+                .map(|position| Location {
+                    target: NormalizedRenderTarget::Image(editor.get_game_view().image.clone().into()),
+                    position,
+                })
+        } else {
+            None
+        };
+        pointer.location = location;
+    }
+
+    fn update_cursor_preview(
+        held: Res<HeldInventoryItem>,
+        state: Res<CreativeInventoryState>,
+        window: Single<&Window, With<PrimaryWindow>>,
+        editor: Res<EditorState>,
+        camera: Single<&Camera, With<PlayerCamera>>,
+        atlas: Res<VoxelAtlasAssets>,
+        voxel_atlas: Res<SharedVoxelAtlas>,
+        preview: Single<(&mut Node, &mut ImageNode), With<CursorItemPreview>>,
+    ) {
+        let (mut node, mut image) = preview.into_inner();
+
+        let Some(item) = held.0.filter(|_| state.open) else {
+            node.display = Display::None;
+            return;
+        };
+
+        let Some(position) = window.cursor_position()
+            .zip(camera.logical_viewport_size())
+            .and_then(|(position, size)| game_view_position(editor.get_game_view().rect, position, size))
+        else {
+            node.display = Display::None;
+            return;
+        };
+
+        node.display = Display::Flex;
+        node.left = px(position.x + 16.0);
+        node.top = px(position.y + 16.0);
+
+        let voxel: VoxelType = item.into();
+        let texture_index = voxel_atlas.0.icon(voxel);
+
+        if image.texture_atlas.as_ref().is_none_or(|atlas| atlas.index != texture_index) {
+            *image = ImageNode::from_atlas_image(
+                atlas.image.clone(),
+                TextureAtlas {
+                    layout: atlas.layout.clone(),
+                    index: texture_index,
+                },
+            );
+        }
     }
 
     fn toggle_creative_inventory(
         keyboard: Res<ButtonInput<KeyCode>>,
         mut state: ResMut<CreativeInventoryState>,
+        mut held: ResMut<HeldInventoryItem>,
         mut root: Single<&mut Node, With<CreativeInventoryRoot>>,
         mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
     ) {
@@ -1185,10 +1471,8 @@ mod inventory {
         state.open = !state.open;
 
         if state.open {
-            // Remember whether the game had captured the cursor.
             state.cursor_was_locked = cursor.grab_mode == CursorGrabMode::Locked;
 
-            // Release the cursor so the player can use the menu.
             cursor.grab_mode = CursorGrabMode::None;
             cursor.visible = true;
 
@@ -1196,7 +1480,9 @@ mod inventory {
         } else {
             root.display = Display::None;
 
-            // Restore the previous cursor state.
+            // Closing the inventory also drops the held item.
+            held.0 = None;
+
             if state.cursor_was_locked {
                 cursor.grab_mode = CursorGrabMode::Locked;
                 cursor.visible = false;
