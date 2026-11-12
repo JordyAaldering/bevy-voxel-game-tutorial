@@ -505,7 +505,7 @@ impl ChunkData {
     fn new(coord: ChunkCoord, entity: Entity) -> Self {
         Self {
             coord,
-            voxels: [VoxelType::Air; _],
+            voxels: [VoxelType::AIR; _],
             density: [Density::EMPTY; _],
             entity: Some(entity),
             generation_phase: ChunkGenerationPhase::HeightGeneration,
@@ -1120,7 +1120,7 @@ fn build_terrain_mesh(
                     samples.map(|sample| (sample.position, sample.density)),
                     |corner, direction| {
                         let sample = samples[corner];
-                        assert_ne!(sample.voxel, VoxelType::Air, "Solid terrain sample has no voxel material");
+                        assert_ne!(sample.voxel, VoxelType::AIR, "Solid terrain sample has no voxel material");
                         atlas.texture(sample.voxel, direction, sample.variant_seed)
                     },
                 );
@@ -1154,7 +1154,7 @@ fn terrain_cell_corners(
             TerrainSample {
                 position,
                 density: Density::EMPTY,
-                voxel: VoxelType::Air,
+                voxel: VoxelType::AIR,
                 variant_seed: 0,
             }
         } else {
