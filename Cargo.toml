@@ -6,7 +6,7 @@ default-run = "main"
 
 [[bin]]
 name = "main"
-path = "src/chapter20.rs"
+path = "src/chapter21.rs"
 
 [[bin]]
 name = "noise_viewer"
