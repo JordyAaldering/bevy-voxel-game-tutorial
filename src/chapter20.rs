@@ -35,7 +35,7 @@ use bevy::{
     prelude::*,
     app::OnAppExitSystems,
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
-    input::mouse::{AccumulatedMouseMotion, MouseWheel},
+    input::mouse::{AccumulatedMouseMotion, MouseScrollUnit, MouseWheel},
     platform::collections::HashMap,
     tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -833,7 +833,7 @@ impl IndexMut<&Chunk> for VoxelWorld {
     }
 }
 
-mod inventory {
+mod hotbar {
     use super::*;
 
     pub struct HotbarPlugin;
@@ -1006,11 +1006,226 @@ mod inventory {
         }
 
         for (slot, mut background) in &mut slots {
-            *background = if slot.index == hotbar.selected {
-                BackgroundColor(Color::WHITE)
+            background.0 = if slot.index == hotbar.selected {
+                Color::WHITE
             } else {
-                BackgroundColor(Color::BLACK)
+                Color::BLACK
             };
+        }
+    }
+}
+
+mod inventory {
+    use super::*;
+
+    pub struct CreativeInventoryPlugin;
+
+    impl Plugin for CreativeInventoryPlugin {
+        fn build(&self, app: &mut App) {
+            app.init_resource::<CreativeInventoryState>()
+                .add_systems(
+                    Startup,
+                    spawn_creative_inventory.after(spawn_player),
+                )
+                .add_systems(
+                    Update,
+                    (
+                        toggle_creative_inventory,
+                        scroll_creative_inventory,
+                    ),
+                );
+        }
+    }
+
+    #[derive(self::Default, Resource)]
+    pub struct CreativeInventoryState {
+        pub open: bool,
+        cursor_was_locked: bool,
+    }
+
+    #[derive(Component)]
+    struct CreativeInventoryRoot;
+
+    #[derive(Component)]
+    struct InventoryGrid;
+
+    fn spawn_creative_inventory(
+        mut commands: Commands,
+        atlas: Res<VoxelAtlasAssets>,
+        voxel_atlas: Res<SharedVoxelAtlas>,
+        camera: Single<Entity, With<PlayerCamera>>,
+    ) {
+        let items = BlockType::ALL
+            .into_iter()
+            .map(VoxelTypeItem::Block)
+            .chain(TerrainType::ALL.into_iter().map(VoxelTypeItem::Terrain));
+
+        commands.spawn((
+            Name::new("Creative Inventory"),
+            CreativeInventoryRoot,
+            UiTargetCamera(*camera),
+            GlobalZIndex(10),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                display: Display::None,
+                ..default()
+            },
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Name::new("Inventory Panel"),
+                Node {
+                    width: px(640),
+                    max_width: percent(90),
+                    height: percent(75),
+                    max_height: px(560),
+                    flex_direction: FlexDirection::Column,
+                    padding: px(16).all(),
+                    row_gap: px(12),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.08, 0.08, 0.08, 0.95)),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("Inventory"),
+                    TextFont {
+                        font_size: 24.0.into(),
+                        ..default()
+                    },
+                ));
+
+                panel.spawn((
+                    Name::new("Inventory Grid"),
+                    InventoryGrid,
+                    ScrollPosition::default(),
+                    Node {
+                        display: Display::Grid,
+                        width: percent(100),
+                        flex_grow: 1.0,
+                        min_height: px(0),
+                        grid_template_columns: RepeatedGridTrack::flex(5, 1.0),
+                        column_gap: px(8),
+                        row_gap: px(8),
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.02, 0.02, 0.02, 0.5)),
+                ))
+                .with_children(|grid| {
+                    for item in items {
+                        let (voxel, name) = match item {
+                            VoxelTypeItem::Block(block) => (
+                                VoxelType::from_block(block),
+                                format!("{block:?}"),
+                            ),
+                            VoxelTypeItem::Terrain(terrain) => (
+                                VoxelType::from_terrain(terrain),
+                                format!("{terrain:?}"),
+                            ),
+                            VoxelTypeItem::Air => unreachable!(),
+                        };
+
+                        let texture_index = voxel_atlas.0.icon(voxel);
+
+                        grid.spawn((
+                            Node {
+                                height: px(88),
+                                flex_direction: FlexDirection::Column,
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                row_gap: px(4),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+                        ))
+                        .with_children(|cell| {
+                            cell.spawn((
+                                ImageNode::from_atlas_image(
+                                    atlas.image.clone(),
+                                    TextureAtlas {
+                                        layout: atlas.layout.clone(),
+                                        index: texture_index,
+                                    },
+                                ),
+                                Node {
+                                    width: px(44),
+                                    height: px(44),
+                                    ..default()
+                                },
+                            ));
+
+                            cell.spawn((
+                                Text::new(name),
+                                TextFont {
+                                    font_size: 12.0.into(),
+                                    ..default()
+                                },
+                            ));
+                        });
+                    }
+                });
+            });
+        });
+    }
+
+    fn toggle_creative_inventory(
+        keyboard: Res<ButtonInput<KeyCode>>,
+        mut state: ResMut<CreativeInventoryState>,
+        mut root: Single<&mut Node, With<CreativeInventoryRoot>>,
+        mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    ) {
+        if !keyboard.just_pressed(KeyCode::KeyE) {
+            return;
+        }
+
+        state.open = !state.open;
+
+        if state.open {
+            // Remember whether the game had captured the cursor.
+            state.cursor_was_locked = cursor.grab_mode == CursorGrabMode::Locked;
+
+            // Release the cursor so the player can use the menu.
+            cursor.grab_mode = CursorGrabMode::None;
+            cursor.visible = true;
+
+            root.display = Display::Flex;
+        } else {
+            root.display = Display::None;
+
+            // Restore the previous cursor state.
+            if state.cursor_was_locked {
+                cursor.grab_mode = CursorGrabMode::Locked;
+                cursor.visible = false;
+            }
+        }
+    }
+
+    fn scroll_creative_inventory(
+        mut mouse: MessageReader<MouseWheel>,
+        state: Res<CreativeInventoryState>,
+        grid: Single<(&mut ScrollPosition, &ComputedNode), With<InventoryGrid>>,
+    ) {
+        if !state.open {
+            return;
+        }
+
+        let (mut position, computed) = grid.into_inner();
+
+        let max_y = (
+            computed.content_size().y - computed.size().y
+        ).max(0.0) * computed.inverse_scale_factor();
+
+        for event in mouse.read() {
+            let delta = match event.unit {
+                MouseScrollUnit::Line => event.y * 40.0,
+                MouseScrollUnit::Pixel => event.y,
+            };
+
+            position.y = (position.y - delta).clamp(0.0, max_y);
         }
     }
 }
@@ -1029,7 +1244,8 @@ fn main() -> AppExit {
             TelemetryPlugin,
             EditorPlugin,
             noise::gpu::GpuPlugin::default(),
-            inventory::HotbarPlugin,
+            hotbar::HotbarPlugin,
+            inventory::CreativeInventoryPlugin,
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -1711,11 +1927,13 @@ fn is_gamemode_spectator(mode: Res<GameMode>) -> bool {
 /// The game view only receives input while it has captured the cursor.
 fn game_view_captured(
     editor_state: Res<EditorState>,
+    inventory: Res<inventory::CreativeInventoryState>,
     cursor: Single<&CursorOptions, With<PrimaryWindow>>,
 ) -> bool {
     editor_state.is_game_view_active()
         && editor_state.is_game_view_visible()
         && cursor.grab_mode == CursorGrabMode::Locked
+        && !inventory.open
 }
 
 fn toggle_cursor(
@@ -1723,6 +1941,7 @@ fn toggle_cursor(
     mouse: Res<ButtonInput<MouseButton>>,
     editor_state: Res<EditorState>,
     window: Single<&Window, With<PrimaryWindow>>,
+    inventory: Res<inventory::CreativeInventoryState>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     // Release the cursor when escape is pressed, or when the game view is no longer the active tab
@@ -1740,6 +1959,7 @@ fn toggle_cursor(
     if mouse.just_pressed(MouseButton::Left)
         && editor_state.is_game_view_active()
         && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+        && !inventory.open
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -1858,7 +2078,7 @@ fn break_place_block(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
     mut world: ResMut<VoxelWorld>,
-    hotbar: Res<inventory::Hotbar>,
+    hotbar: Res<hotbar::Hotbar>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
     let do_break = mouse.just_pressed(MouseButton::Left);
