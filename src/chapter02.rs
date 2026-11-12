@@ -4,7 +4,6 @@ use crate::{
     screenshot::ScreenshotPlugin,
 };
 
-use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
@@ -20,15 +19,79 @@ use bevy_inspector_egui::{
     quick::{ResourceInspectorPlugin, WorldInspectorPlugin},
 };
 
-#[derive(Default, Resource, Reflect, InspectorOptions)]
-#[reflect(Resource, InspectorOptions)]
-struct CameraSettings {
-    #[default(5.0)]
-    #[inspector(min = 0.1, max = 20.0)]
-    move_speed: f32,
-    #[default(0.0025)]
-    #[inspector(min = 0.0001, max = 0.01)]
-    mouse_sensitivity: f32,
+mod player {
+    use super::*;
+
+    #[derive(better_default::Default, Resource, Reflect, InspectorOptions)]
+    #[reflect(Resource, InspectorOptions)]
+    struct CameraSettings {
+        #[default(5.0)]
+        #[inspector(min = 0.1, max = 20.0)]
+        move_speed: f32,
+        #[default(0.0025)]
+        #[inspector(min = 0.0001, max = 0.01)]
+        mouse_sensitivity: f32,
+    }
+
+    pub struct PlayerPlugin;
+
+    impl Plugin for PlayerPlugin {
+        fn build(&self, app: &mut App) {
+            app.init_resource::<CameraSettings>()
+                .register_type::<CameraSettings>()
+                .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
+                .add_systems(Startup, player_spawn)
+                .add_systems(Update,
+                    (player_look, player_move)
+                        .run_if(is_focused)
+                );
+        }
+    }
+
+    fn player_spawn(mut commands: Commands) {
+        commands.spawn((
+            Name::new("Player"),
+            Camera3d::default(),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
+            Transform::from_xyz(1.5, 2.0, 4.0)
+                .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
+        ));
+    }
+
+    fn player_look(
+        settings: Res<CameraSettings>,
+        mouse: Res<AccumulatedMouseMotion>,
+        mut camera: Single<&mut Transform, With<Camera3d>>,
+    ) {
+        let delta = mouse.delta;
+
+        if delta != Vec2::ZERO {
+            camera.rotate_y(-delta.x * settings.mouse_sensitivity);
+            camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
+        }
+    }
+
+    fn player_move(
+        time: Res<Time>,
+        settings: Res<CameraSettings>,
+        keyboard: Res<ButtonInput<KeyCode>>,
+        mut camera: Single<&mut Transform, With<Camera3d>>,
+    ) {
+        let delta = vec3(
+            f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+            f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+            f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+        );
+
+        if delta != Vec3::ZERO {
+            let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
+            camera.translation += settings.move_speed * time.delta_secs() * direction.normalize();
+        }
+    }
 }
 
 fn main() -> AppExit {
@@ -37,28 +100,20 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
-            ResourceInspectorPlugin::<CameraSettings>::default(),
             WireframePlugin::default(),
             ScreenshotPlugin::default(),
+            player::PlayerPlugin,
         ))
         .insert_resource(WireframeConfig {
             global: true,
             ..default()
         })
-        .init_resource::<CameraSettings>()
-        .register_type::<CameraSettings>()
         .add_systems(Startup, (
             spawn_global_illumination,
-            spawn_player,
             spawn_voxel,
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (
-                player_look,
-                player_move,
-            )
-            .run_if(is_focused),
         ))
         .run()
 }
@@ -74,20 +129,6 @@ fn spawn_global_illumination(mut commands: Commands) {
         Transform::from_rotation(
             Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
         ),
-    ));
-}
-
-fn spawn_player(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Player"),
-        Camera3d::default(),
-        Projection::Perspective(PerspectiveProjection {
-            fov: 0.9,
-            ..default()
-        }),
-        Msaa::Off,
-        Transform::from_xyz(1.5, 2.0, 4.0)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
 }
 
@@ -119,41 +160,10 @@ fn toggle_cursor(
         cursor.visible = true;
     }
     // Recapture when a click occurs outside egui
-    else if mouse.just_pressed(MouseButton::Left)
+    if mouse.just_pressed(MouseButton::Left)
         && !egui_wants_input.wants_pointer_input()
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
-    }
-}
-
-fn player_look(
-    settings: Res<CameraSettings>,
-    mouse: Res<AccumulatedMouseMotion>,
-    mut camera: Single<&mut Transform, With<Camera3d>>,
-) {
-    let delta = mouse.delta;
-
-    if delta != Vec2::ZERO {
-        camera.rotate_y(-delta.x * settings.mouse_sensitivity);
-        camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
-    }
-}
-
-fn player_move(
-    time: Res<Time>,
-    settings: Res<CameraSettings>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut camera: Single<&mut Transform, With<Camera3d>>,
-) {
-    let delta = vec3(
-        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
-        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-    );
-
-    if delta != Vec3::ZERO {
-        let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
-        camera.translation += settings.move_speed * time.delta_secs() * direction.normalize();
     }
 }
