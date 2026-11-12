@@ -62,6 +62,13 @@ fn player_physics(
             dt,
             axis,
         );
+        collide_with_terrain(
+            &mut player,
+            &mut transform.translation,
+            &world,
+            dt,
+            axis,
+        );
     }
 }
 
@@ -99,6 +106,11 @@ fn move_axis(
     let max_z = max.z.floor() as i32;
 
     // Find the voxel coordinate of the leading face
+    //
+    // The positive-direction edge is an exclusive maximum, so the epsilon
+    // keeps exact boundary contact from selecting the voxel beyond it.
+    // Negative-direction edges are intentionally unadjusted; subtracting the
+    // epsilon there would move the lookup into the voxel behind the face.
     let edge = match (axis, velocity > 0.0) {
         (Axis::X, true)  => position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
         (Axis::X, false) => position.x - PLAYER_WIDTH_HALF,
@@ -144,5 +156,171 @@ fn move_axis(
 }
 
 fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
-    world.get_voxel(pos).is_none_or(VoxelType::is_solid)
+    world.get_voxel(pos).is_none_or(VoxelType::is_block)
+}
+
+fn collide_with_terrain(
+    player: &mut Player,
+    position: &mut Vec3,
+    world: &VoxelWorld,
+    dt: f32,
+    axis: Axis,
+) {
+    let velocity = axis.get(&player.velocity);
+    if velocity == 0.0 {
+        return;
+    }
+
+    let min = Vec3::new(
+        position.x - PLAYER_WIDTH_HALF,
+        position.y,
+        position.z - PLAYER_WIDTH_HALF,
+    );
+    let max = Vec3::new(
+        position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
+        position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+    );
+    let current_edge = match (axis, velocity > 0.0) {
+        (Axis::X, true) => position.x + PLAYER_WIDTH_HALF,
+        (Axis::X, false) => position.x - PLAYER_WIDTH_HALF,
+        (Axis::Y, true) => position.y + PLAYER_HEIGHT,
+        (Axis::Y, false) => position.y,
+        (Axis::Z, true) => position.z + PLAYER_WIDTH_HALF,
+        (Axis::Z, false) => position.z - PLAYER_WIDTH_HALF,
+    };
+    let previous_edge = current_edge - velocity * dt;
+    let center_x = (min.x + max.x) * 0.5;
+    let center_z = (min.z + max.z) * 0.5;
+    let center_y = (min.y + max.y) * 0.5;
+    let cross_samples = match axis {
+        Axis::X => [
+            vec3(center_y, min.z, 0.0),
+            vec3(center_y, max.z, 0.0),
+            vec3(max.y, min.z, 0.0),
+            vec3(max.y, max.z, 0.0),
+        ],
+        Axis::Y => [vec3(center_x, center_z, 0.0); 4],
+        Axis::Z => [
+            vec3(min.x, center_y, 0.0),
+            vec3(max.x, center_y, 0.0),
+            vec3(min.x, max.y, 0.0),
+            vec3(max.x, max.y, 0.0),
+        ],
+    };
+
+    let surface = cross_samples.iter().copied()
+        .filter_map(|sample| terrain_crossing(world, axis, sample, previous_edge, current_edge, velocity))
+        .min_by(|a, b| {
+            if velocity > 0.0 {
+                a.total_cmp(b)
+            } else {
+                b.total_cmp(a)
+            }
+        });
+
+    let Some(surface) = surface else {
+        return;
+    };
+
+    match axis {
+        Axis::X => position.x = surface + if velocity > 0.0 { -PLAYER_WIDTH_HALF } else { PLAYER_WIDTH_HALF },
+        Axis::Y => {
+            position.y = surface + if velocity > 0.0 { -PLAYER_HEIGHT } else { 0.0 };
+            if velocity < 0.0 {
+                player.grounded = true;
+            }
+        }
+        Axis::Z => position.z = surface + if velocity > 0.0 { -PLAYER_WIDTH_HALF } else { PLAYER_WIDTH_HALF },
+    }
+    Axis::set(axis, &mut player.velocity, 0.0);
+}
+
+fn terrain_crossing(
+    world: &VoxelWorld,
+    axis: Axis,
+    sample: Vec3,
+    start: f32,
+    end: f32,
+    velocity: f32,
+) -> Option<f32> {
+    let previous = sample_terrain_at_axis(world, axis, start, sample)?;
+    let current = sample_terrain_at_axis(world, axis, end, sample)?;
+    if previous <= 0.5 && current >= 0.5 && previous != current {
+        let fraction = (0.5 - previous) / (current - previous);
+        return Some(start + (end - start) * fraction);
+    };
+
+    if current < 0.5 {
+        return None;
+    }
+
+    let direction = if velocity < 0.0 { 1.0 } else { -1.0 };
+    let max_distance = match axis {
+        Axis::X | Axis::Z => (PLAYER_WIDTH + 1.0).ceil() as usize,
+        Axis::Y => (PLAYER_HEIGHT + 1.0).ceil() as usize,
+    };
+    for distance in 1..=max_distance {
+        let empty_edge = end + direction * distance as f32;
+        let empty_density = sample_terrain_at_axis(world, axis, empty_edge, sample)?;
+        if empty_density < 0.5 {
+            let fraction = (0.5 - empty_density) / (current - empty_density);
+            return Some(empty_edge + (end - empty_edge) * fraction);
+        }
+    }
+
+    None
+}
+
+fn sample_terrain_at_axis(world: &VoxelWorld, axis: Axis, axis_position: f32, sample: Vec3) -> Option<f32> {
+    let position = match axis {
+        Axis::X => vec3(axis_position, sample.x, sample.y),
+        Axis::Y => vec3(sample.x, axis_position, sample.y),
+        Axis::Z => vec3(sample.x, sample.y, axis_position),
+    };
+    sample_terrain(world, position)
+}
+
+fn sample_terrain(world: &VoxelWorld, position: Vec3) -> Option<f32> {
+    let sample_position = position - Vec3::splat(0.5);
+    let base = sample_position.floor();
+    let fraction = sample_position - base;
+    let x = base.x as i32;
+    let y = base.y as i32;
+    let z = base.z as i32;
+
+    let density = |x: i32, y: i32, z: i32| {
+        let pos = WorldCoord::new(x, y, z);
+        let voxel = world.get_voxel(pos)?;
+        if !voxel.is_terrain() {
+            return Some(0.0);
+        }
+
+        let density = world.get_density(pos)?;
+        let density: f32 = density.into();
+        Some(density)
+    };
+
+    let densities = [
+        density(x, y, z)?,
+        density(x + 1, y, z)?,
+        density(x, y + 1, z)?,
+        density(x + 1, y + 1, z)?,
+        density(x, y, z + 1)?,
+        density(x + 1, y, z + 1)?,
+        density(x, y + 1, z + 1)?,
+        density(x + 1, y + 1, z + 1)?,
+    ];
+
+    let x00 = lerp(densities[0], densities[1], fraction.x);
+    let x10 = lerp(densities[2], densities[3], fraction.x);
+    let x01 = lerp(densities[4], densities[5], fraction.x);
+    let x11 = lerp(densities[6], densities[7], fraction.x);
+    let y0 = lerp(x00, x10, fraction.y);
+    let y1 = lerp(x01, x11, fraction.y);
+    Some(lerp(y0, y1, fraction.z))
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }
