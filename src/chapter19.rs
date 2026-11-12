@@ -1237,7 +1237,10 @@ fn is_face_visible(
     direction: Direction,
 ) -> bool {
     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
-        return neighbor.is_transparent();
+        // TODO: temporary. If a terrain appears beside a block, the terrain should conform to the block's shape.
+        // Otherwise, say we create a block path through a terrain, there will be a little 'valley' between the block and the terrain.
+        // Instead, the terrain should connect to the corners of the block, making them flush.
+        return !neighbor.is_block() || neighbor.is_transparent();
     }
 
     // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
