@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[repr(transparent)]
 pub struct Density(u8);
 
 impl Density {

@@ -183,6 +183,130 @@ pub enum VoxelType {
     Ice,
 }
 
+/// A compact representation of a voxel type.
+///
+/// A voxel can represent air, a block type, or a terrain type. These categories
+/// are encoded into a single `u16` to keep voxel storage memory-efficient.
+///
+/// The 16 bits are divided into two fields:
+///
+/// - The upper 3 bits identify the voxel category.
+/// - The lower 13 bits identify the specific type within that category.
+///
+/// This allows for up to 8 categories, each with up to 8192 distinct types.
+///
+/// The category discriminants are:
+///
+/// | Category | Bits  |
+/// |----------|-------|
+/// | Air      | `000` |
+/// | Block    | `001` |
+/// | Terrain  | `010` |
+///
+/// The individual block and terrain types are defined as separate enums.
+/// Their discriminants are stored in the lower 13 bits, allowing them to
+/// retain the type safety and readability of enums without requiring
+/// a larger representation for every voxel.
+///
+/// A regular enum containing these categories would require the compiler
+/// to represent both the category discriminant and its associated payload.
+/// By encoding both explicitly, we guarantee that each `VoxelType` occupies
+/// exactly two bytes.
+///
+/// Most operations can work directly on the packed representation using
+/// bit masks, avoiding the need to unpack the value. The `unpack` method is
+/// provided for cases where the actual `BlockType` or `TerrainType` is needed.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VoxelType2(u16);
+
+impl VoxelType2 {
+    /// The lower 13 bits are the type, the upper 3 bits are the category.
+    const TYPE_MASK: u16 = 0x1FFF;
+    const CATEGORY_MASK: u16 = 0xE000;
+
+    const AIR: u16 = 0b000 << 13;
+    const BLOCK: u16 = 0b001 << 13;
+    const TERRAIN: u16 = 0b010 << 13;
+
+    pub const fn is_air(self) -> bool {
+        (self.0 & Self::CATEGORY_MASK) == Self::AIR
+    }
+
+    pub const fn is_block(self) -> bool {
+        (self.0 & Self::CATEGORY_MASK) == Self::BLOCK
+    }
+
+    pub const fn is_terrain(self) -> bool {
+        (self.0 & Self::CATEGORY_MASK) == Self::TERRAIN
+    }
+
+    pub const fn block_id(self) -> Option<u16> {
+        if self.is_block() {
+            Some(self.0 & Self::TYPE_MASK)
+        } else {
+            None
+        }
+    }
+
+    pub const fn terrain_id(self) -> Option<u16> {
+        if self.is_terrain() {
+            Some(self.0 & Self::TYPE_MASK)
+        } else {
+            None
+        }
+    }
+
+    pub fn unpack(self) -> Result<VoxelTypeItem, String> {
+        let discriminant = 0xE000 & self.0;
+        let payload = 0x1FFF & self.0;
+        Ok(match discriminant {
+            Self::AIR => VoxelTypeItem::Air,
+            Self::BLOCK => VoxelTypeItem::Block(BlockType::try_from(payload)?),
+            Self::TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
+            _ => return Err(format!("Invalid voxel discriminant: {discriminant:#X}")),
+        })
+    }
+}
+
+enum VoxelTypeItem {
+    Air,
+    Block(BlockType),
+    Terrain(TerrainType),
+}
+
+#[repr(u16)]
+enum BlockType {
+    Bricks,
+}
+
+impl TryFrom<u16> for BlockType {
+    type Error = String;
+
+    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Bricks),
+            _ => Err(format!("Invalid block type: {value}")),
+        }
+    }
+}
+
+#[repr(u16)]
+enum TerrainType {
+    Grass,
+}
+
+impl TryFrom<u16> for TerrainType {
+    type Error = String;
+
+    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Grass),
+            _ => Err(format!("Invalid terrain type: {value}")),
+        }
+    }
+}
+
 impl VoxelType {
     const ALL: [Self; 21] = [
         Self::Air,
