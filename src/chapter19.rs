@@ -506,7 +506,6 @@ impl NeighborRequirement {
 pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
-    /// Density of each voxel, used for marching cubes. 0 is empty, 1 is solid.
     density: [Density; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[wincode(skip)]
     entity: Option<Entity>,
@@ -725,7 +724,7 @@ impl VoxelWorld {
 
         let chunk = Arc::make_mut(chunk);
         chunk[voxel_pos] = voxel;
-        chunk.density[voxel_pos.index()] = if voxel.is_terrain() { Density::FULL } else { Density::EMPTY };
+        chunk.density[voxel_pos.index()] = if voxel.is_solid() { Density::FULL } else { Density::EMPTY };
 
         self.notify_chunk(commands, chunk_pos);
 
@@ -775,7 +774,7 @@ impl VoxelWorld {
             let local = coord.local_coord();
             let voxel_type: VoxelType = voxel.voxel.into();
             chunk[local] = voxel_type;
-            chunk.density[local.index()] = if voxel_type != VoxelType::AIR { Density::FULL } else { Density::EMPTY };
+            chunk.density[local.index()] = if voxel_type.is_solid() { Density::FULL } else { Density::EMPTY };
         }
     }
 
@@ -1105,8 +1104,14 @@ fn build_voxel_mesh(
 struct TerrainSample {
     position: Vec3,
     density: Density,
-    voxel: VoxelType,
+    terrain: Option<TerrainType>,
     variant_seed: u32,
+}
+
+impl TerrainSample {
+    fn marching_density(self) -> Density {
+        self.terrain.map_or(Density::EMPTY, |_| self.density)
+    }
 }
 
 fn build_terrain_mesh(
@@ -1130,11 +1135,16 @@ fn build_terrain_mesh(
                     VoxelCoord::new(x, y, z),
                 );
                 terrain_mesh.add_marching_cube(
-                    samples.map(|sample| (sample.position, sample.density)),
+                    samples.map(|sample| (sample.position, sample.marching_density())),
                     |corner, direction| {
                         let sample = samples[corner];
-                        assert_ne!(sample.voxel, VoxelType::AIR, "Solid terrain sample has no voxel material");
-                        atlas.texture(sample.voxel, direction, sample.variant_seed)
+                        sample.terrain.map(|terrain| {
+                            atlas.texture(
+                                VoxelType::from_terrain(terrain),
+                                direction,
+                                sample.variant_seed,
+                            )
+                        })
                     },
                 );
             }
@@ -1167,7 +1177,7 @@ fn terrain_cell_corners(
             TerrainSample {
                 position,
                 density: Density::EMPTY,
-                voxel: VoxelType::AIR,
+                terrain: None,
                 variant_seed: 0,
             }
         } else {
@@ -1178,10 +1188,15 @@ fn terrain_cell_corners(
                 (true, false) => east,
             };
             let local = VoxelCoord::new(x % CHUNK_WIDTH, y, z % CHUNK_WIDTH);
+            let voxel = source[local];
+            let terrain = match voxel.unpack().expect("Chunk contains an invalid voxel") {
+                VoxelTypeItem::Terrain(terrain) => Some(terrain),
+                VoxelTypeItem::Air | VoxelTypeItem::Block(_) => None,
+            };
             TerrainSample {
                 position,
                 density: source.density[local.index()],
-                voxel: source[local],
+                terrain,
                 variant_seed: variant_seed(source.coord, local),
             }
         }

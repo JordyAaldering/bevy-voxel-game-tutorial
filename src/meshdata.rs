@@ -56,10 +56,11 @@ impl<'a> MeshData<'a> {
     /// Corners wind around X/Z on the lower layer, followed by the upper layer:
     /// (0,0,0), (1,0,0), (1,0,1), (0,0,1), then the same order at y = 1.
     /// `texture` resolves the material of a solid corner for a face direction.
+    /// Solid corners without a material are allowed and do not produce triangles.
     pub fn add_marching_cube(
         &mut self,
         corners: [(Vec3, Density); 8],
-        texture: impl Fn(usize, Direction) -> usize,
+        texture: impl Fn(usize, Direction) -> Option<usize>,
     ) {
         const EDGES: [(usize, usize); 12] = [
             (0, 1), (1, 2), (2, 3), (3, 0),
@@ -175,7 +176,16 @@ impl<'a> MeshData<'a> {
                     normal = -normal;
                 }
                 let direction = normal_direction(normal);
-                let uv_quad = quad_uvs(self.atlas, texture(solid_corner, direction));
+                let Some((_, texture)) = (0..8)
+                    .filter(|&corner| solid[corner])
+                    .min_by(|&a, &b| {
+                        corners[a].0.distance_squared(centroid).total_cmp(&corners[b].0.distance_squared(centroid))
+                    })
+                    .and_then(|corner| texture(corner, direction).map(|texture| (corner, texture)))
+                else {
+                    continue;
+                };
+                let uv_quad = quad_uvs(self.atlas, texture);
                 let uvs = vertices.map(|position| {
                     let local = position - corners[0].0;
                     let (u, v) = match direction {
