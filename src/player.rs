@@ -6,6 +6,8 @@ use crate::{is_gamemode_spectator, is_gamemode_survival};
 use crate::{VoxelWorld, meshdata, raycast::{self, VoxelHit}, VoxelType};
 #[cfg(since09)]
 use crate::{TerrainConfig, CHUNK_HEIGHT};
+#[cfg(since12)]
+use crate::game_view_captured;
 
 #[cfg(since02)]
 use better_default::Default;
@@ -15,11 +17,9 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 #[cfg(since02)]
-use bevy_inspector_egui::{
-    prelude::*,
-    bevy_egui::input::EguiWantsInput,
-    InspectorOptions,
-};
+use bevy_inspector_egui::{prelude::*, InspectorOptions};
+#[cfg(all(since02, until11))]
+use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
 #[cfg(only02)]
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 
@@ -76,25 +76,41 @@ impl Plugin for PlayerPlugin {
 
         #[cfg(until08)]
         app.add_systems(Startup, player.spawn());
+
+        #[cfg(since08)]
+        app.add_systems(Update, (
+            draw_selected_voxel,
+            break_place_block,
+        ));
+
         #[cfg(since09)]
         app.add_systems(Startup, spawn_player);
 
+        app.add_systems(Update, toggle_cursor);
+
+        #[cfg(until11)]
         app.add_systems(Update, (
-                toggle_cursor,
-                (
-                    player_look,
-                    #[cfg(until06)]
-                    move_spectator,
-                    #[cfg(since07)]
-                    move_spectator.run_if(is_gamemode_spectator),
-                    #[cfg(since07)]
-                    move_survival.run_if(is_gamemode_survival),
-                    #[cfg(since08)]
-                    break_place_block,
-                ).run_if(is_focused),
-                #[cfg(since08)]
-                draw_selected_voxel,
-            ));
+            (
+                player_look,
+                #[cfg(until06)]
+                move_spectator,
+                #[cfg(since07)]
+                move_spectator.run_if(is_gamemode_spectator),
+                #[cfg(since07)]
+                move_survival.run_if(is_gamemode_survival),
+            ).run_if(is_focused),
+        ));
+
+        #[cfg(since12)]
+        app.add_systems(Update, (
+            (
+                player_look,
+                #[cfg(since07)]
+                move_spectator.run_if(is_gamemode_spectator),
+                #[cfg(since07)]
+                move_survival.run_if(is_gamemode_survival),
+            ).run_if(is_focused.and_then(game_view_captured)),
+        ));
     }
 }
 
@@ -116,7 +132,7 @@ fn toggle_cursor(
     }
 }
 
-#[cfg(since02)]
+#[cfg(all(since02, until11))]
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -131,6 +147,35 @@ fn toggle_cursor(
     // Recapture when a click occurs outside egui
     if mouse.just_pressed(MouseButton::Left)
         && !egui_wants_input.wants_pointer_input()
+    {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
+    }
+}
+
+#[cfg(since12)]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    editor_state: Res<crate::EditorState>,
+) {
+    // Release the cursor when escape is pressed, or when the game view is no longer the active tab
+    if keyboard.just_pressed(KeyCode::Escape)
+        || (
+            cursor.grab_mode != CursorGrabMode::None
+            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible())
+        )
+    {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+
+    // Capture only when clicking inside the game view
+    if mouse.just_pressed(MouseButton::Left)
+        && editor_state.is_game_view_active()
+        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -179,6 +224,7 @@ fn player() -> impl Scene {
 fn spawn_player(
     mut commands: Commands,
     config: Res<TerrainConfig>,
+    #[cfg(since12)] editor_state: Res<crate::EditorState>,
 ) {
     let world_height = config.height.sample2(config.seed, 0.0, 0.0) as usize;
     let world_height = world_height.clamp(0, CHUNK_HEIGHT - 1);
@@ -199,6 +245,8 @@ fn spawn_player(
                 PlayerCamera,
                 Camera3d::default(),
                 Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
+                #[cfg(since12)]
+                editor_state.game_camera_target(),
             ));
         });
 }

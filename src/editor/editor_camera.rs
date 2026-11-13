@@ -1,6 +1,4 @@
-use super::EditorState;
-
-use crate::EditorCamera;
+use super::{EditorCamera, EditorState};
 
 use bevy::{
     prelude::*,

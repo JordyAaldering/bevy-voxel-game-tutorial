@@ -8,7 +8,7 @@ pub use editor_state::EditorState;
 use editor_tab::{EditorTab, EditorTabViewer};
 use view_target::ViewTarget;
 
-use crate::{EditorCamera, PlayerCamera};
+use crate::PlayerCamera;
 
 use bevy::{
     prelude::*,
@@ -23,6 +23,9 @@ use bevy_inspector_egui::{
 };
 
 pub struct EditorPlugin;
+
+#[derive(Component)]
+struct EditorCamera;
 
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
@@ -86,7 +89,7 @@ fn create_view_target(images: &mut Assets<Image>, egui_textures: &mut EguiUserTe
 }
 
 /// Resizes each camera's image to match its tab, and disables cameras whose tab is hidden
-pub fn update_view_targets(
+fn update_view_targets(
     editor_state: Res<EditorState>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut images: ResMut<Assets<Image>>,
