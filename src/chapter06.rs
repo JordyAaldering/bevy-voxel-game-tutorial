@@ -107,7 +107,7 @@ fn main() -> AppExit {
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
             DebugGizmosPlugin::default(),
-            PlayerPlugin::new(is_focused),
+            PlayerPlugin::default(),
             VoxelWorldPlugin::default(),
         ))
         .add_systems(Startup, (

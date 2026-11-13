@@ -16,7 +16,7 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins,
             ScreenshotPlugin::default(),
-            PlayerPlugin::new(is_focused),
+            PlayerPlugin::default(),
         ))
         .add_systems(Startup, (
             global_illumination.spawn(),

@@ -1,4 +1,6 @@
 use crate::{ChunkData, ChunkCoord};
+#[cfg(feature = "chapter07")]
+use crate::{VoxelType, WorldCoord};
 
 use better_default::Default;
 use bevy::{
@@ -8,6 +10,11 @@ use bevy::{
 #[cfg(all(feature = "chapter05", not(feature = "chapter06")))]
 use bevy_inspector_egui::{egui, bevy_egui::{EguiContexts, EguiPrimaryContextPass}};
 
+#[cfg(feature = "chapter07")]
+pub const ATLAS_COLUMNS: u32 = 9;
+#[cfg(feature = "chapter07")]
+pub const ATLAS_ROWS: u32 = 10;
+
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
 
@@ -15,6 +22,10 @@ pub struct VoxelWorldPlugin;
 pub struct VoxelWorld {
     chunks: HashMap<ChunkCoord, ChunkData>,
 }
+
+#[cfg(feature = "chapter07")]
+#[derive(Resource)]
+pub struct ChunkAtlas(pub Handle<TextureAtlasLayout>);
 
 #[derive(Resource)]
 pub struct ChunkMaterial(pub Handle<StandardMaterial>);
@@ -24,8 +35,11 @@ impl Plugin for VoxelWorldPlugin {
         #[cfg(all(feature = "chapter05", not(feature = "chapter06")))]
         app.add_systems(EguiPrimaryContextPass, chunk_debug_ui);
 
-        app.init_resource::<VoxelWorld>()
-            .add_systems(PreStartup, setup_chunk_material);
+        app.init_resource::<VoxelWorld>();
+        app.add_systems(PreStartup, setup_chunk_material);
+
+        #[cfg(feature = "chapter07")]
+        app.add_systems(PreStartup, setup_chunk_atlas);
     }
 }
 
@@ -37,6 +51,25 @@ impl VoxelWorld {
 
     pub fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
         self.chunks.get(&pos)
+    }
+
+    #[cfg(feature = "chapter07")]
+    pub fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
+        if !pos.in_bounds() {
+            return None;
+        }
+
+        let chunk_pos = pos.chunk_coord();
+        self.get_chunk(chunk_pos).map(|chunk| {
+            let voxel_pos = pos.local_coord();
+            chunk[voxel_pos]
+        })
+    }
+
+    #[cfg(feature = "chapter07")]
+    pub fn is_solid(&self, pos: WorldCoord) -> bool {
+        self.get_voxel(pos)
+            .is_some_and(VoxelType::is_solid)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&ChunkCoord, &ChunkData)> {
@@ -56,7 +89,7 @@ fn setup_chunk_material(
     commands.insert_resource(ChunkMaterial(material));
 }
 
-#[cfg(all(feature = "chapter06", not(feature = "chapter07")))]
+#[cfg(feature = "chapter06")]
 fn setup_chunk_material(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -72,6 +105,22 @@ fn setup_chunk_material(
     });
 
     commands.insert_resource(ChunkMaterial(material));
+}
+
+#[cfg(feature = "chapter07")]
+fn setup_chunk_atlas(
+    mut commands: Commands,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let layout = layouts.add(TextureAtlasLayout::from_grid(
+        UVec2::splat(ATLAS_COLUMNS * ATLAS_ROWS),
+        ATLAS_COLUMNS,
+        ATLAS_ROWS,
+        None,
+        None,
+    ));
+
+    commands.insert_resource(ChunkAtlas(layout));
 }
 
 #[cfg(all(feature = "chapter05", not(feature = "chapter06")))]

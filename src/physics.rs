@@ -1,4 +1,8 @@
-use crate::{Player, VoxelType, VoxelWorld, coords::{Axis, WorldCoord}};
+mod axis;
+
+use axis::Axis;
+
+use crate::{Player, VoxelWorld, WorldCoord};
 
 use std::marker::PhantomData;
 
@@ -62,6 +66,8 @@ fn player_physics(
             dt,
             axis,
         );
+
+        #[cfg(feature = "chapter10")]
         collide_with_terrain(
             &mut player,
             &mut transform.translation,
@@ -155,10 +161,17 @@ fn move_axis(
     }
 }
 
+#[cfg(not(feature = "chapter10"))]
+fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
+    world.is_solid(pos)
+}
+
+#[cfg(feature = "chapter10")]
 fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
     world.get_voxel(pos).is_none_or(VoxelType::is_block)
 }
 
+#[cfg(feature = "chapter10")]
 fn collide_with_terrain(
     player: &mut Player,
     position: &mut Vec3,
@@ -236,6 +249,7 @@ fn collide_with_terrain(
     Axis::set(axis, &mut player.velocity, 0.0);
 }
 
+#[cfg(feature = "chapter10")]
 fn terrain_crossing(
     world: &VoxelWorld,
     axis: Axis,
@@ -263,6 +277,7 @@ fn terrain_crossing(
     find_terrain_crossing(world, axis, sample, end, end + direction * max_distance, true)
 }
 
+#[cfg(feature = "chapter10")]
 fn find_terrain_crossing(
     world: &VoxelWorld,
     axis: Axis,
@@ -312,6 +327,7 @@ fn find_terrain_crossing(
     }
 }
 
+#[cfg(feature = "chapter10")]
 fn sample_terrain_at_axis(world: &VoxelWorld, axis: Axis, axis_position: f32, sample: Vec3) -> Option<f32> {
     let position = match axis {
         Axis::X => vec3(axis_position, sample.x, sample.y),
@@ -321,6 +337,7 @@ fn sample_terrain_at_axis(world: &VoxelWorld, axis: Axis, axis_position: f32, sa
     sample_terrain(world, position)
 }
 
+#[cfg(feature = "chapter10")]
 fn sample_terrain(world: &VoxelWorld, position: Vec3) -> Option<f32> {
     let sample_position = position - Vec3::splat(0.5);
     let base = sample_position.floor();
@@ -361,6 +378,7 @@ fn sample_terrain(world: &VoxelWorld, position: Vec3) -> Option<f32> {
     Some(lerp(y0, y1, fraction.z))
 }
 
+#[cfg(feature = "chapter10")]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }

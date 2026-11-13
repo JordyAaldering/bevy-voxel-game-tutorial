@@ -3,15 +3,11 @@
 
 #![allow(unused)]
 
-mod aabb;
-mod axis;
 mod direction;
 mod chunk_coord;
 mod voxel_coord;
 mod world_coord;
 
-pub use aabb::Aabb;
-pub use axis::Axis;
 pub use direction::Direction;
 pub use chunk_coord::ChunkCoord;
 pub use voxel_coord::VoxelCoord;

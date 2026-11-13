@@ -1,4 +1,6 @@
-use std::marker::PhantomData;
+use crate::is_focused;
+#[cfg(feature = "chapter07")]
+use crate::{is_gamemode_spectator, is_gamemode_survival};
 
 #[cfg(feature = "chapter02")]
 use better_default::Default;
@@ -21,40 +23,42 @@ const MOVE_SPEED: f32 = 5.0;
 #[cfg(not(feature = "chapter02"))]
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
-pub struct PlayerPlugin<F, M> {
-    is_focused: F,
-    _marker: PhantomData<fn() -> M>,
-}
+#[cfg(feature = "chapter07")]
+const PLAYER_EYE_HEIGHT: f32 = 1.6;
+#[cfg(feature = "chapter07")]
+const MAX_PITCH: f32 = 1.4;
+
+#[derive(Default)]
+pub struct PlayerPlugin;
 
 #[cfg(feature = "chapter02")]
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct CameraSettings {
-    #[default(5.0)]
-    #[inspector(min = 0.1, max = 20.0)]
-    move_speed: f32,
     #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
     mouse_sensitivity: f32,
+    #[default(5.0)]
+    #[inspector(min = 0.1, max = 20.0)]
+    move_speed: f32,
+    #[cfg(feature = "chapter07")]
+    #[default(7.0)]
+    #[inspector(min = 0.1, max = 20.0)]
+    jump_strenght: f32,
 }
 
-impl<F, M> PlayerPlugin<F, M>
-where
-    F: SystemCondition<M>,
-{
-    pub fn new(is_focused: F) -> Self {
-        Self {
-            is_focused,
-            _marker: PhantomData,
-        }
-    }
+#[cfg(feature = "chapter07")]
+#[derive(Clone, Default, Component)]
+pub struct Player {
+    pub velocity: Vec3,
+    pub grounded: bool,
 }
 
-impl<F, M> Plugin for PlayerPlugin<F, M>
-where
-    F: Clone + SystemCondition<M> + Send + Sync + 'static,
-    M: 'static
-{
+#[cfg(feature = "chapter07")]
+#[derive(Clone, Copy, Default, Component)]
+struct PlayerCamera;
+
+impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(feature = "chapter02")]
         app.init_resource::<CameraSettings>().register_type::<CameraSettings>();
@@ -66,13 +70,19 @@ where
                 toggle_cursor,
                 (
                     player_look,
-                    player_move,
+                    #[cfg(not(feature = "chapter07"))]
+                    move_spectator,
+                    #[cfg(feature = "chapter07")]
+                    move_spectator.run_if(is_gamemode_spectator),
+                    #[cfg(feature = "chapter07")]
+                    move_survival.run_if(is_gamemode_survival),
                 )
-                .run_if(self.is_focused.clone()),
+                .run_if(is_focused),
             ));
     }
 }
 
+#[cfg(not(feature = "chapter07"))]
 fn player() -> impl Scene {
     let position = {
         #[cfg(not(feature = "chapter04"))] { vec3(1.5, 2.0, 4.0) }
@@ -91,6 +101,26 @@ fn player() -> impl Scene {
     }
 }
 
+#[cfg(feature = "chapter07")]
+fn player() -> impl Scene {
+    bsn! {
+        #Player
+        Player
+        Transform::from_xyz(4.5, 5.0, 4.5)
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9
+        })
+        Msaa::Off
+        InheritedVisibility
+        Children [
+            PlayerCamera
+            Camera3d
+            Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0)
+        ]
+    }
+}
+
+#[cfg(not(feature = "chapter07"))]
 fn player_look(
     mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
@@ -109,7 +139,30 @@ fn player_look(
     }
 }
 
-fn player_move(
+#[cfg(feature = "chapter07")]
+fn player_look(
+    mouse: Res<AccumulatedMouseMotion>,
+    mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
+    settings: Res<CameraSettings>,
+) {
+    let delta = mouse.delta;
+
+    if delta != Vec2::ZERO {
+        // Horizontal movement rotates the entire player around the world Y axis
+        player.rotate_y(-delta.x * settings.mouse_sensitivity);
+        // Vertical movement rotates only the camera around its local X axis
+        let (yaw, mut pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
+
+        pitch -= delta.y * settings.mouse_sensitivity;
+        pitch = pitch.clamp(-MAX_PITCH, MAX_PITCH);
+
+        camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+    }
+}
+
+#[cfg(not(feature = "chapter07"))]
+fn move_spectator(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
@@ -129,6 +182,57 @@ fn player_move(
     if delta != Vec3::ZERO {
         let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
         camera.translation += speed * time.delta_secs() * direction.normalize();
+    }
+}
+
+#[cfg(feature = "chapter07")]
+fn move_spectator(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    player: Single<(&mut Transform, &mut Player)>,
+    settings: Res<CameraSettings>,
+) {
+    let (mut transform, mut player) = player.into_inner();
+
+    player.velocity = Vec3::ZERO;
+    player.grounded = false;
+
+    let delta = vec3(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
+
+    if delta != Vec3::ZERO {
+        let direction = delta.x * transform.right() + delta.y * Vec3::Y + delta.z * transform.forward();
+        transform.translation += settings.move_speed * time.delta_secs() * direction.normalize();
+    }
+}
+
+#[cfg(feature = "chapter07")]
+fn move_survival(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    player: Single<(&mut Player, &Transform)>,
+    settings: Res<CameraSettings>,
+) {
+    let (mut player, transform) = player.into_inner();
+
+    let dx = f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA));
+    let dz = f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS));
+
+    if dx != 0.0 || dz != 0.0 {
+        let movement = dx * transform.right() + dz * transform.forward();
+        let movement = movement.normalize_or_zero();
+        player.velocity.x = movement.x * settings.move_speed;
+        player.velocity.z = movement.z * settings.move_speed;
+    } else {
+        player.velocity.x = 0.0;
+        player.velocity.z = 0.0;
+    }
+
+    if player.grounded && keyboard.just_pressed(KeyCode::Space) {
+        player.velocity.y = settings.jump_strenght;
+        player.grounded = false;
     }
 }
 

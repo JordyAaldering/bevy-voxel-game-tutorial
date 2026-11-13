@@ -6,7 +6,7 @@ default-run = "main"
 
 [[bin]]
 name = "main"
-path = "src/chapter06.rs"
+path = "src/chapter07.rs"
 
 #[[bin]]
 #name = "structure_editor"
@@ -17,7 +17,7 @@ name = "noise_viewer"
 path = "src/noise_viewer.rs"
 
 [features]
-default = ["chapter06"]
+default = ["chapter07"]
 chapter01 = []
 chapter02 = ["chapter01"]
 chapter03 = ["chapter02"]
