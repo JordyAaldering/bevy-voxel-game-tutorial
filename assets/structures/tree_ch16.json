@@ -1,0 +1,48 @@
+{
+  "voxels": [
+    {
+      "pos": [0, 0, 0],
+      "voxel": "log"
+    },
+    {
+      "pos": [0, 1, 0],
+      "voxel": "log"
+    },
+    {
+      "pos": [-1, 1, -1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [-1, 1, 0],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [-1, 1, 1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [0, 1, -1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [0, 1, 1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [1, 1, -1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [1, 1, 0],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [1, 1, 1],
+      "voxel": "leaves"
+    },
+    {
+      "pos": [0, 2, 0],
+      "voxel": "leaves"
+    }
+  ]
+}

@@ -20,7 +20,7 @@ pub const ATLAS_COLUMNS: u32 = 9;
 pub const ATLAS_ROWS: u32 = 10;
 
 #[cfg(since10)]
-const CHUNK_LOAD_RADIUS: i32 = 2;
+const CHUNK_LOAD_RADIUS: i32 = 4;
 
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
@@ -603,6 +603,7 @@ fn poll_chunk_generation_tasks(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
     mut meshes: ResMut<Assets<Mesh>>,
+    #[cfg(since16)] structures: Res<Structures>,
     mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&Mesh3d>)>,
 ) -> Result<(), BevyError> {
     for (entity, chunk, mut task, mesh3d) in &mut tasks {
@@ -611,12 +612,37 @@ fn poll_chunk_generation_tasks(
         };
 
         match result {
-            ChunkGenerationResult::Height(generated) => {
+            #[cfg(until15)]
+            ChunkGenerationResult::Data(generated) => {
                 let data = &mut world[&chunk];
 
                 assert_eq!(data.generation_phase, ChunkGenerationPhase::HeightGeneration);
 
                 data.set_voxels(*generated);
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord());
+                world.notify_neighbors(&mut commands, chunk.coord());
+            }
+            #[cfg(since16)]
+            ChunkGenerationResult::Data(phase, generated) => {
+                let data = &mut world[chunk];
+
+                assert_eq!(data.generation_phase, phase);
+
+                data.set_voxels(*generated);
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord());
+                world.notify_neighbors(&mut commands, chunk.coord());
+            }
+            #[cfg(since16)]
+            ChunkGenerationResult::Structures(origins) => {
+                assert_eq!(world[chunk].generation_phase, ChunkGenerationPhase::GenerateStructures);
+
+                for origin in origins {
+                    world.place_structure(&structures.tree, origin);
+                }
+
+                let data = &mut world[chunk];
                 data.generation_phase = data.generation_phase.next();
                 world.notify_chunk(&mut commands, chunk.coord());
                 world.notify_neighbors(&mut commands, chunk.coord());
@@ -660,7 +686,15 @@ fn start_chunk_generation_tasks(
         let phase = data.generation_phase;
         commands.entity(entity).remove::<NeedsGenerationCheck>();
 
+        if !world.neighbors_ready_for(chunk.coord(), match phase {
+            ChunkGenerationPhase::Done => ChunkGenerationPhase::MeshGeneration,
+            _ => phase,
+        }) {
+            continue;
+        }
+
         let task = match phase {
+            #[cfg(until15)]
             ChunkGenerationPhase::HeightGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
@@ -668,7 +702,30 @@ fn start_chunk_generation_tasks(
                 pool.spawn(async move {
                     let mut generated = Box::new((*data).clone());
                     generate_chunk_height(&mut generated, &config);
-                    ChunkGenerationResult::Height(generated)
+                    ChunkGenerationResult::Data(generated)
+                })
+            }
+            #[cfg(since16)]
+            ChunkGenerationPhase::HeightGeneration => {
+                let data = Arc::clone(data);
+                let config = config.clone();
+                trace!("Generating {:?} for chunk {}", phase, chunk.coord());
+                pool.spawn(async move {
+                    let mut generated = Box::new((*data).clone());
+                    match phase {
+                        ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
+                        _ => unreachable!(),
+                    }
+                    ChunkGenerationResult::Data(phase, generated)
+                })
+            }
+            #[cfg(since16)]
+            ChunkGenerationPhase::GenerateStructures => {
+                let coord = chunk.coord();
+                let config = config.clone();
+                trace!("Generating structures for chunk {}", coord);
+                pool.spawn(async move {
+                    ChunkGenerationResult::Structures(generate_structures(coord, &config))
                 })
             }
             ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
@@ -698,11 +755,52 @@ fn start_chunk_generation_tasks(
     }
 }
 
+#[cfg(since14)]
 impl VoxelWorld {
-    #[cfg(since14)]
     pub fn save(&self) {
         for chunk in self.chunks.values() {
             chunk.save();
         }
     }
+}
+
+#[cfg(since16)]
+impl VoxelWorld {
+    /// Writes the structure into the world, without triggering remeshes.
+    /// Structures cannot extend further than one chunk away from their origin.
+    fn place_structure(&mut self, structure: &Structure, origin: WorldCoord) {
+        for voxel in &structure.voxels {
+            let coord = origin + voxel.pos;
+            if !coord.in_bounds() {
+                continue;
+            }
+
+            let chunk = self.chunks.get_mut(&coord.chunk_coord())
+                .expect("Structure generation requires all neighboring chunk data");
+            Arc::make_mut(chunk)[coord.local_coord()] = voxel.voxel;
+        }
+    }
+}
+
+#[cfg(since16)]
+fn generate_structures(coord: ChunkCoord, config: &TerrainConfig) -> Vec<WorldCoord> {
+    /// Local (x, z) columns of each chunk that get a tree: one in the middle, and one in the corner
+    /// whose leaves overflow into three neighbouring chunks.
+    const TREE_COLUMNS: [(usize, usize); 2] = [
+        (CHUNK_WIDTH / 2, CHUNK_WIDTH / 2),
+        (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
+    ];
+
+    let heights = config.height.area2(config.seed, coord.x, coord.z);
+    let mut origins = Vec::new();
+    for (x, z) in TREE_COLUMNS {
+        let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+        // Trees stand on top of the grass
+        let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
+        let world_y = height as i32 + 1;
+        origins.push(WorldCoord::new(world_x, world_y, world_z));
+    }
+    origins
 }

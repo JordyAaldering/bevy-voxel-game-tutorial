@@ -1,4 +1,31 @@
-use crate::{VoxelTypeItem, coords::{Direction, WorldCoord}};
+use crate::*;
+
+use bevy::prelude::*;
+
+/// Structures loaded from `assets/structures`.
+#[derive(Resource)]
+pub struct Structures {
+    pub tree: Structure,
+}
+
+impl Structures {
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
+
+    pub fn load() -> Result<Self, String> {
+        Ok(Self {
+            #[cfg(until19)]
+            tree: Self::load_structure("tree_ch16")?,
+            #[cfg(since20)]
+            tree: Self::load_structure("tree")?,
+        })
+    }
+
+    pub fn load_structure(name: &str) -> Result<Structure, String> {
+        let path = Path::new(Self::DIR).join(format!("{name}.json"));
+        let json = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str(&json).map_err(|e| format!("{}: {e}", path.display()))
+    }
+}
 
 /// Set a coordinate to air to require that space to be cleared by the structure,
 /// otherwise if there happens to be any voxels already at that position it remains.
@@ -18,6 +45,9 @@ pub struct Structure {
 pub struct StructureVoxel {
     /// Offset relative to the structure origin (can be negative).
     pub pos: WorldCoord,
+    #[cfg(until19)]
+    pub voxel: VoxelType,
+    #[cfg(since20)]
     pub voxel: VoxelTypeItem,
     /// Orientation, for voxels that have one (e.g. logs).
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,4 +1,4 @@
-use super::ChunkData;
+use crate::*;
 
 use bevy::{prelude::*, tasks::Task};
 
@@ -6,14 +6,27 @@ use bevy::{prelude::*, tasks::Task};
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 pub enum ChunkGenerationPhase {
     HeightGeneration,
+    #[cfg(since16)]
+    GenerateStructures,
     MeshGeneration,
     Done,
 }
 
 impl ChunkGenerationPhase {
+    #[cfg(until15)]
     pub fn next(self) -> Self {
         match self {
             Self::HeightGeneration => Self::MeshGeneration,
+            Self::MeshGeneration  => Self::Done,
+            Self::Done => Self::Done,
+        }
+    }
+
+    #[cfg(since16)]
+    pub fn next(self) -> Self {
+        match self {
+            Self::HeightGeneration => Self::GenerateStructures,
+            Self::GenerateStructures => Self::MeshGeneration,
             Self::MeshGeneration  => Self::Done,
             Self::Done => Self::Done,
         }
@@ -23,8 +36,8 @@ impl ChunkGenerationPhase {
     pub fn neighbor_requirement(self) -> NeighborRequirement {
         match self {
             Self::HeightGeneration => NeighborRequirement::NONE,
-            // Only the chunks touching this one are needed to cull faces
-            Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: false },
+            Self::GenerateStructures => NeighborRequirement { radius: 1, diagonal: true },
+            Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: true },
             Self::Done => NeighborRequirement::NONE,
         }
     }
@@ -62,8 +75,16 @@ pub struct NeedsGenerationCheck;
 #[derive(Component)]
 pub struct ChunkGenerationTask(pub Task<ChunkGenerationResult>);
 
+#[cfg(until15)]
 pub enum ChunkGenerationResult {
-    Height(Box<ChunkData>),
+    Data(Box<ChunkData>),
+    Mesh(Mesh),
+}
+
+#[cfg(since16)]
+pub enum ChunkGenerationResult {
+    Data(ChunkGenerationPhase, Box<ChunkData>),
+    Structures(Vec<WorldCoord>),
     Mesh(Mesh),
 }
 
