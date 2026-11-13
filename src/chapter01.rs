@@ -19,8 +19,8 @@ fn main() -> AppExit {
             PlayerPlugin::new(is_focused),
         ))
         .add_systems(Startup, (
-            spawn_global_illumination,
-            spawn_voxel,
+            global_illumination.spawn(),
+            cube.spawn(),
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -28,34 +28,29 @@ fn main() -> AppExit {
         .run()
 }
 
-fn spawn_global_illumination(mut commands: Commands) {
-    commands.spawn((
+fn global_illumination() -> impl Scene {
+    bsn! {
         DirectionalLight {
             shadow_maps_enabled: true,
             shadow_normal_bias: 1.0,
             shadow_depth_bias: 0.05,
-            ..default()
-        },
+        }
         Transform::from_rotation(
             Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
-        ),
-    ));
+        )
+    }
+}
+
+fn cube() -> impl Scene {
+    bsn! {
+        Transform::from_xyz(0.5, 0.5, 0.5)
+        Mesh3d(asset_value(Cuboid::from_length(1.0)))
+        MeshMaterial3d<StandardMaterial>(asset_value(Color::linear_rgb(0.2, 0.7, 0.3)))
+    }
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn spawn_voxel(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Transform::from_xyz(0.5, 0.5, 0.5),
-        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
-        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
 }
 
 fn toggle_cursor(

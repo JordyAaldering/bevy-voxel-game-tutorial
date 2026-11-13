@@ -59,9 +59,7 @@ where
         #[cfg(all(feature = "chapter02", not(feature = "chapter03")))]
         app.add_plugins(ResourceInspectorPlugin::<CameraSettings>::default());
 
-        app.add_systems(Startup, (
-                spawn_player,
-            ))
+        app.add_systems(Startup, player.spawn())
             .add_systems(Update, (
                 (
                     player_look,
@@ -72,18 +70,17 @@ where
     }
 }
 
-fn spawn_player(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Player"),
-        Camera3d::default(),
+fn player() -> impl Scene {
+    bsn!{
+        #Player
+        Camera3d
+        Transform::from_xyz(1.5, 2.0, 4.0)
+            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y)
         Projection::Perspective(PerspectiveProjection {
             fov: 0.9,
-            ..default()
-        }),
-        Msaa::Off,
-        Transform::from_xyz(1.5, 2.0, 4.0)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
-    ));
+        })
+        Msaa::Off
+    }
 }
 
 fn player_look(
