@@ -511,7 +511,7 @@ fn build_mesh(chunk: &ChunkData, neighbors: &ChunkNeighbors, atlas: &TextureAtla
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, voxel)| *voxel != VoxelType::Air)
     {
-        for direction in Direction::iter() {
+        for direction in Direction::ALL {
             if is_face_visible(chunk, neighbors, voxel_pos, direction) {
                 mesh_data.add_quad(direction, voxel_pos.local_position(), voxel.texture(direction));
             }

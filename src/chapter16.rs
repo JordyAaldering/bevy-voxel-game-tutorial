@@ -837,7 +837,7 @@ fn build_mesh(
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| *v != VoxelType::Air)
     {
-        for direction in Direction::iter() {
+        for direction in Direction::ALL {
             if is_face_visible(neighbors, chunk, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));

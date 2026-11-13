@@ -16,29 +16,6 @@ path = "src/chapter07.rs"
 name = "noise_viewer"
 path = "src/noise_viewer.rs"
 
-[features]
-default = ["chapter07"]
-chapter01 = []
-chapter02 = ["chapter01"]
-chapter03 = ["chapter02"]
-chapter04 = ["chapter03"]
-chapter05 = ["chapter04"]
-chapter06 = ["chapter05"]
-chapter07 = ["chapter06"]
-chapter08 = ["chapter07"]
-chapter09 = ["chapter08"]
-chapter10 = ["chapter09"]
-chapter11 = ["chapter10"]
-chapter12 = ["chapter11"]
-chapter13 = ["chapter12"]
-chapter14 = ["chapter13"]
-chapter15 = ["chapter14"]
-chapter16 = ["chapter15"]
-chapter17 = ["chapter16"]
-chapter18 = ["chapter17"]
-chapter19 = ["chapter18"]
-chapter20 = ["chapter19"]
-
 [profile.dev]
 opt-level = 1
 

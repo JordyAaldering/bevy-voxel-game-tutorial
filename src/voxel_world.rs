@@ -1,5 +1,5 @@
 use crate::{ChunkData, ChunkCoord};
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 use crate::{VoxelType, WorldCoord};
 
 use better_default::Default;
@@ -7,12 +7,12 @@ use bevy::{
     prelude::*,
     platform::collections::HashMap,
 };
-#[cfg(all(feature = "chapter05", not(feature = "chapter06")))]
+#[cfg(only05)]
 use bevy_inspector_egui::{egui, bevy_egui::{EguiContexts, EguiPrimaryContextPass}};
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 pub const ATLAS_COLUMNS: u32 = 9;
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 pub const ATLAS_ROWS: u32 = 10;
 
 #[derive(Default)]
@@ -23,7 +23,7 @@ pub struct VoxelWorld {
     chunks: HashMap<ChunkCoord, ChunkData>,
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 #[derive(Resource)]
 pub struct ChunkAtlas(pub Handle<TextureAtlasLayout>);
 
@@ -32,13 +32,13 @@ pub struct ChunkMaterial(pub Handle<StandardMaterial>);
 
 impl Plugin for VoxelWorldPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(all(feature = "chapter05", not(feature = "chapter06")))]
+        #[cfg(only05)]
         app.add_systems(EguiPrimaryContextPass, chunk_debug_ui);
 
         app.init_resource::<VoxelWorld>();
         app.add_systems(PreStartup, setup_chunk_material);
 
-        #[cfg(feature = "chapter07")]
+        #[cfg(since07)]
         app.add_systems(PreStartup, setup_chunk_atlas);
     }
 }
@@ -53,7 +53,7 @@ impl VoxelWorld {
         self.chunks.get(&pos)
     }
 
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     pub fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
         if !pos.in_bounds() {
             return None;
@@ -66,7 +66,7 @@ impl VoxelWorld {
         })
     }
 
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     pub fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
             .is_some_and(VoxelType::is_solid)
@@ -77,7 +77,7 @@ impl VoxelWorld {
     }
 }
 
-#[cfg(all(not(feature = "chapter06")))]
+#[cfg(until05)]
 fn setup_chunk_material(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -89,7 +89,7 @@ fn setup_chunk_material(
     commands.insert_resource(ChunkMaterial(material));
 }
 
-#[cfg(feature = "chapter06")]
+#[cfg(since06)]
 fn setup_chunk_material(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -107,7 +107,7 @@ fn setup_chunk_material(
     commands.insert_resource(ChunkMaterial(material));
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn setup_chunk_atlas(
     mut commands: Commands,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
@@ -123,7 +123,7 @@ fn setup_chunk_atlas(
     commands.insert_resource(ChunkAtlas(layout));
 }
 
-#[cfg(all(feature = "chapter05", not(feature = "chapter06")))]
+#[cfg(only05)]
 pub fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result {
     egui::Window::new("Chunks")
         .show(contexts.ctx_mut()?, |ui| {

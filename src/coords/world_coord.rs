@@ -14,7 +14,6 @@ pub struct WorldCoord {
     z: i32,
 }
 
-#[allow(dead_code)]
 impl WorldCoord {
     pub const ZERO: Self = Self { x: 0, y: 0, z: 0 };
 
@@ -51,14 +50,14 @@ impl WorldCoord {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
 
-    pub const fn shift(self, direction: Direction) -> Self {
-        let (dx, dy, dz) = direction.offset();
-        Self {
-            x: self.x + dx,
-            y: self.y + dy,
-            z: self.z + dz,
-        }
-    }
+    // pub const fn shift(self, direction: Direction) -> Self {
+    //     let (dx, dy, dz) = direction.offset();
+    //     Self {
+    //         x: self.x + dx,
+    //         y: self.y + dy,
+    //         z: self.z + dz,
+    //     }
+    // }
 
     pub fn min(self, other: Self) -> Self {
         Self {

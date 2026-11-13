@@ -187,7 +187,7 @@ fn build_mesh(
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| !matches!(v, VoxelType::Air))
     {
-        for direction in Direction::iter() {
+        for direction in Direction::ALL {
             if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = voxel.texture(direction);

@@ -138,7 +138,7 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
         }
 
         for (variant, face_spec) in spec.faces.variants().iter().enumerate() {
-            for direction in Direction::iter() {
+            for direction in Direction::ALL {
                 let name = face_spec.resolve(direction)
                     .ok_or_else(|| format!("{voxel:?} variant {variant} has no image for its {direction:?} face"))?;
                 names.insert(name.to_owned());

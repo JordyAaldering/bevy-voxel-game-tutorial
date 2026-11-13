@@ -1,4 +1,4 @@
-use bevy::math::{CompassQuadrant, Vec3};
+use bevy::math::CompassQuadrant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -17,52 +17,49 @@ pub enum Direction {
     Back,
 }
 
-#[allow(dead_code)]
 impl Direction {
-    pub const fn iter() -> [Self; 6] {
-        [
-            Self::Right,
-            Self::Left,
-            Self::Top,
-            Self::Bottom,
-            Self::Front,
-            Self::Back,
-        ]
-    }
+    pub const ALL: [Self; 6] = [
+        Self::Right,
+        Self::Left,
+        Self::Top,
+        Self::Bottom,
+        Self::Front,
+        Self::Back,
+    ];
 
-    pub const fn opposite(self) -> Self {
-        match self {
-            Self::Right  => Self::Left,
-            Self::Left   => Self::Right,
-            Self::Top    => Self::Bottom,
-            Self::Bottom => Self::Top,
-            Self::Front  => Self::Back,
-            Self::Back   => Self::Front,
-        }
-    }
+    // pub const fn opposite(self) -> Self {
+    //     match self {
+    //         Self::Right  => Self::Left,
+    //         Self::Left   => Self::Right,
+    //         Self::Top    => Self::Bottom,
+    //         Self::Bottom => Self::Top,
+    //         Self::Front  => Self::Back,
+    //         Self::Back   => Self::Front,
+    //     }
+    // }
 
-    pub const fn offset(self) -> (i32, i32, i32) {
-        match self {
-            Self::Right  => ( 1,  0,  0),
-            Self::Left   => (-1,  0,  0),
-            Self::Top    => ( 0,  1,  0),
-            Self::Bottom => ( 0, -1,  0),
-            Self::Front  => ( 0,  0,  1),
-            Self::Back   => ( 0,  0, -1),
-        }
-    }
+    // pub const fn offset(self) -> (i32, i32, i32) {
+    //     match self {
+    //         Self::Right  => ( 1,  0,  0),
+    //         Self::Left   => (-1,  0,  0),
+    //         Self::Top    => ( 0,  1,  0),
+    //         Self::Bottom => ( 0, -1,  0),
+    //         Self::Front  => ( 0,  0,  1),
+    //         Self::Back   => ( 0,  0, -1),
+    //     }
+    // }
 
-    /// Returns the outward-facing normal vector for this direction.
-    pub const fn vec3(self) -> Vec3 {
-        match self {
-            Self::Right  => Vec3::X,
-            Self::Left   => Vec3::NEG_X,
-            Self::Top    => Vec3::Y,
-            Self::Bottom => Vec3::NEG_Y,
-            Self::Front  => Vec3::Z,
-            Self::Back   => Vec3::NEG_Z,
-        }
-    }
+    // /// Returns the outward-facing normal vector for this direction.
+    // pub const fn vec3(self) -> Vec3 {
+    //     match self {
+    //         Self::Right  => Vec3::X,
+    //         Self::Left   => Vec3::NEG_X,
+    //         Self::Top    => Vec3::Y,
+    //         Self::Bottom => Vec3::NEG_Y,
+    //         Self::Front  => Vec3::Z,
+    //         Self::Back   => Vec3::NEG_Z,
+    //     }
+    // }
 }
 
 impl TryInto<CompassQuadrant> for Direction {

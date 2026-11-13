@@ -16,7 +16,6 @@ pub struct VoxelCoord {
     pub z: usize,
 }
 
-#[allow(dead_code)]
 impl VoxelCoord {
     pub const fn new(x: usize, y: usize, z: usize) -> Self {
         debug_assert!(x < CHUNK_WIDTH);

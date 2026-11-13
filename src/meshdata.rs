@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::Direction;
-#[cfg(feature = "chapter20")]
+#[cfg(since20)]
 use crate::Density;
 
 use bevy::{
@@ -10,9 +10,9 @@ use bevy::{
     mesh::{Indices, PrimitiveTopology},
 };
 
-#[cfg_attr(not(feature = "chapter07"), derive(Default))]
+#[cfg_attr(until06, derive(Default))]
 pub struct MeshData<'a> {
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     atlas: &'a TextureAtlasLayout,
     indices: Vec<u32>,
     vertices: Vec<Vec3>,
@@ -22,7 +22,7 @@ pub struct MeshData<'a> {
 }
 
 impl<'a> MeshData<'a> {
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     pub fn new(atlas: &'a TextureAtlasLayout) -> Self {
         Self {
             atlas,
@@ -42,7 +42,7 @@ impl<'a> MeshData<'a> {
             .with_inserted_indices(Indices::U32(std::mem::take(&mut self.indices)))
     }
 
-    #[cfg(all(not(feature = "chapter06")))]
+    #[cfg(until05)]
     pub fn add_quad(&mut self, direction: Direction, origin: Vec3) {
         let start = self.vertices.len() as u32;
         self.indices.extend(quad_indices(start));
@@ -51,7 +51,7 @@ impl<'a> MeshData<'a> {
         self.uvs.extend(quad_uvs());
     }
 
-    #[cfg(all(feature = "chapter06", not(feature = "chapter07")))]
+    #[cfg(only06)]
     pub fn add_quad(&mut self, direction: Direction, origin: Vec3, uvs: [Vec2; 4]) {
         let start = self.vertices.len() as u32;
         self.indices.extend(quad_indices(start));
@@ -60,7 +60,7 @@ impl<'a> MeshData<'a> {
         self.uvs.extend(uvs);
     }
 
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     pub fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: usize) {
         let start = self.vertices.len() as u32;
         self.indices.extend(quad_indices(start));
@@ -70,7 +70,7 @@ impl<'a> MeshData<'a> {
     }
 
     /// Appends a triangle with mesh-local positions and atlas-space UVs.
-    #[cfg(feature = "chapter20")]
+    #[cfg(since20)]
     pub fn add_triangle(&mut self, vertices: [Vec3; 3], normals: [Vec3; 3], uvs: [Vec2; 3]) {
         let start = self.vertices.len() as u32;
         self.indices.extend([start, start + 1, start + 2]);
@@ -84,7 +84,7 @@ impl<'a> MeshData<'a> {
     /// (0,0,0), (1,0,0), (1,0,1), (0,0,1), then the same order at y = 1.
     /// `texture` resolves the material of a solid corner for a face direction.
     /// Solid corners without a material are allowed and do not produce triangles.
-    #[cfg(feature = "chapter20")]
+    #[cfg(since20)]
     pub fn add_marching_cube(
         &mut self,
         corners: [(Vec3, Density); 8],
@@ -326,7 +326,7 @@ fn quad_normals(direction: Direction) -> [Vec3; 4] {
 ///
 /// Note that the y-axis is flipped in UV coordinates;
 /// the bottom left voxel has $y = 1$ in UV coordinates.
-#[cfg(not(feature = "chapter06"))]
+#[cfg(until05)]
 fn quad_uvs() -> [Vec2; 4] {
     [
         vec2(0.0, 1.0), // Bottom left
@@ -336,7 +336,7 @@ fn quad_uvs() -> [Vec2; 4] {
     ]
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
     let rect = atlas.textures[index];
     let size = atlas.size.as_vec2();
@@ -352,7 +352,7 @@ fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
     ]
 }
 
-#[cfg(feature = "chapter20")]
+#[cfg(since20)]
 fn normal_direction(normal: Vec3) -> Direction {
     let abs = normal.abs();
     if abs.y >= abs.x && abs.y >= abs.z {

@@ -1,37 +1,37 @@
 use crate::is_focused;
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 use crate::{is_gamemode_spectator, is_gamemode_survival};
 
-#[cfg(feature = "chapter02")]
+#[cfg(since02)]
 use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-#[cfg(feature = "chapter02")]
+#[cfg(since02)]
 use bevy_inspector_egui::{
     prelude::*,
     bevy_egui::input::EguiWantsInput,
     InspectorOptions,
 };
-#[cfg(all(feature = "chapter02", not(feature = "chapter03")))]
+#[cfg(only02)]
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 
-#[cfg(not(feature = "chapter02"))]
+#[cfg(only01)]
 const MOVE_SPEED: f32 = 5.0;
-#[cfg(not(feature = "chapter02"))]
+#[cfg(only01)]
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 const MAX_PITCH: f32 = 1.4;
 
 #[derive(Default)]
 pub struct PlayerPlugin;
 
-#[cfg(feature = "chapter02")]
+#[cfg(since02)]
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct CameraSettings {
@@ -41,28 +41,28 @@ struct CameraSettings {
     #[default(5.0)]
     #[inspector(min = 0.1, max = 20.0)]
     move_speed: f32,
-    #[cfg(feature = "chapter07")]
+    #[cfg(since07)]
     #[default(7.0)]
     #[inspector(min = 0.1, max = 20.0)]
     jump_strenght: f32,
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 #[derive(Clone, Default, Component)]
 pub struct Player {
     pub velocity: Vec3,
     pub grounded: bool,
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 #[derive(Clone, Copy, Default, Component)]
 struct PlayerCamera;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(feature = "chapter02")]
+        #[cfg(since02)]
         app.init_resource::<CameraSettings>().register_type::<CameraSettings>();
-        #[cfg(all(feature = "chapter02", not(feature = "chapter03")))]
+        #[cfg(only02)]
         app.add_plugins(ResourceInspectorPlugin::<CameraSettings>::default());
 
         app.add_systems(Startup, player.spawn())
@@ -70,11 +70,11 @@ impl Plugin for PlayerPlugin {
                 toggle_cursor,
                 (
                     player_look,
-                    #[cfg(not(feature = "chapter07"))]
+                    #[cfg(until06)]
                     move_spectator,
-                    #[cfg(feature = "chapter07")]
+                    #[cfg(since07)]
                     move_spectator.run_if(is_gamemode_spectator),
-                    #[cfg(feature = "chapter07")]
+                    #[cfg(since07)]
                     move_survival.run_if(is_gamemode_survival),
                 )
                 .run_if(is_focused),
@@ -82,11 +82,11 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-#[cfg(not(feature = "chapter07"))]
+#[cfg(until06)]
 fn player() -> impl Scene {
     let position = {
-        #[cfg(not(feature = "chapter04"))] { vec3(1.5, 2.0, 4.0) }
-        #[cfg(feature = "chapter04")] { vec3(5.0, 6.0, 11.0) }
+        #[cfg(until03)] { vec3(1.5, 2.0, 4.0) }
+        #[cfg(since04)] { vec3(5.0, 6.0, 11.0) }
     };
 
     bsn!{
@@ -101,7 +101,7 @@ fn player() -> impl Scene {
     }
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn player() -> impl Scene {
     bsn! {
         #Player
@@ -120,17 +120,17 @@ fn player() -> impl Scene {
     }
 }
 
-#[cfg(not(feature = "chapter07"))]
+#[cfg(until06)]
 fn player_look(
     mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
-    #[cfg(feature = "chapter02")] settings: Res<CameraSettings>,
+    #[cfg(since02)] settings: Res<CameraSettings>,
 ) {
     let delta = mouse.delta;
 
     let sensitivity = {
-        #[cfg(not(feature = "chapter02"))] { MOUSE_SENSITIVITY }
-        #[cfg(feature = "chapter02")] { settings.mouse_sensitivity }
+        #[cfg(until01)] { MOUSE_SENSITIVITY }
+        #[cfg(since02)] { settings.mouse_sensitivity }
     };
 
     if delta != Vec2::ZERO {
@@ -139,7 +139,7 @@ fn player_look(
     }
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn player_look(
     mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
@@ -161,12 +161,12 @@ fn player_look(
     }
 }
 
-#[cfg(not(feature = "chapter07"))]
+#[cfg(until06)]
 fn move_spectator(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
-    #[cfg(feature = "chapter02")] settings: Res<CameraSettings>,
+    #[cfg(since02)] settings: Res<CameraSettings>,
 ) {
     let delta = vec3(
         f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
@@ -175,8 +175,8 @@ fn move_spectator(
     );
 
     let speed = {
-        #[cfg(not(feature = "chapter02"))] { MOVE_SPEED }
-        #[cfg(feature = "chapter02")] { settings.move_speed }
+        #[cfg(not(since02))] { MOVE_SPEED }
+        #[cfg(since02)] { settings.move_speed }
     };
 
     if delta != Vec3::ZERO {
@@ -185,7 +185,7 @@ fn move_spectator(
     }
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn move_spectator(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -209,7 +209,7 @@ fn move_spectator(
     }
 }
 
-#[cfg(feature = "chapter07")]
+#[cfg(since07)]
 fn move_survival(
     keyboard: Res<ButtonInput<KeyCode>>,
     player: Single<(&mut Player, &Transform)>,
@@ -236,7 +236,7 @@ fn move_survival(
     }
 }
 
-#[cfg(not(feature = "chapter02"))]
+#[cfg(not(since02))]
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -255,7 +255,7 @@ fn toggle_cursor(
     }
 }
 
-#[cfg(feature = "chapter02")]
+#[cfg(since02)]
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,

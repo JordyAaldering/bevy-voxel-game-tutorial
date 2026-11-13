@@ -110,7 +110,7 @@ fn build_mesh(
     for (voxel_pos, _) in chunk.iter()
         .filter(|(_, v)| !matches!(v, VoxelType::Air))
     {
-        for direction in Direction::iter() {
+        for direction in Direction::ALL {
             if is_face_visible(chunk, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 mesh.add_quad(direction, origin);

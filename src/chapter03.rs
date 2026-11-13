@@ -70,14 +70,7 @@ fn voxel() -> impl Scene {
 fn build_mesh() -> Mesh {
     let mut mesh = MeshData::default();
 
-    for direction in [
-        Direction::Right,
-        Direction::Left,
-        Direction::Top,
-        Direction::Bottom,
-        Direction::Front,
-        Direction::Back,
-    ] {
+    for direction in Direction::ALL {
         mesh.add_quad(direction, Vec3::ZERO);
     }
 
