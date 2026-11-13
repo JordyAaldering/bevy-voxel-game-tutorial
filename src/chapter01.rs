@@ -43,6 +43,7 @@ fn global_illumination() -> impl Scene {
 
 fn cube() -> impl Scene {
     bsn! {
+        #Cube
         Transform::from_xyz(0.5, 0.5, 0.5)
         Mesh3d(asset_value(Cuboid::from_length(1.0)))
         MeshMaterial3d<StandardMaterial>(asset_value(Color::linear_rgb(0.2, 0.7, 0.3)))

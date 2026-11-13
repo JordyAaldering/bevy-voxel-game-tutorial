@@ -1,18 +1,13 @@
-mod coords;
 mod player;
 mod screenshot;
 
 use crate::{
-    chunk::{CHUNK_WIDTH, CHUNK_HEIGHT},
-    coords::Direction,
     player::PlayerPlugin,
     screenshot::ScreenshotPlugin,
 };
 
 use bevy::{
     prelude::*,
-    asset::RenderAssetUsages,
-    mesh::{Indices, PrimitiveTopology},
     pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
@@ -24,11 +19,25 @@ use bevy_inspector_egui::{
     quick::WorldInspectorPlugin,
 };
 
-mod chunk {
-    use super::*;
+mod direction {
+    pub enum Direction {
+        Right,
+        Left,
+        Top,
+        Bottom,
+        Front,
+        Back,
+    }
+}
 
-    pub const CHUNK_WIDTH: usize = 3;
-    pub const CHUNK_HEIGHT: usize = 4;
+mod face {
+    use crate::direction::Direction;
+
+    use bevy::{
+        prelude::*,
+        asset::RenderAssetUsages,
+        mesh::{Indices, PrimitiveTopology},
+    };
 
     struct Face {
         direction: Direction,
@@ -121,7 +130,15 @@ mod chunk {
 
         /// Returns the normals of the 4 corners of the quad.
         fn normals(&self) -> [Vec3; 4] {
-            [self.direction.vec3(); 4]
+            let normal = match self.direction {
+                Direction::Right  => Vec3::X,
+                Direction::Left   => Vec3::NEG_X,
+                Direction::Top    => Vec3::Y,
+                Direction::Bottom => Vec3::NEG_Y,
+                Direction::Front  => Vec3::Z,
+                Direction::Back   => Vec3::NEG_Z,
+            };
+            [normal; 4]
         }
 
         /// Returns the UV coordinates of the 4 corners of the quad.
@@ -144,7 +161,14 @@ mod chunk {
         let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
         let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
 
-        for direction in Direction::iter() {
+        for direction in [
+            Direction::Right,
+            Direction::Left,
+            Direction::Top,
+            Direction::Bottom,
+            Direction::Front,
+            Direction::Back,
+        ] {
             let face = Face { direction };
 
             let start = vertices.len() as u32;
@@ -177,8 +201,8 @@ fn main() -> AppExit {
             ..default()
         })
         .add_systems(Startup, (
-            spawn_global_illumination,
-            spawn_voxel,
+            global_illumination.spawn(),
+            voxel.spawn(),
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -186,30 +210,26 @@ fn main() -> AppExit {
         .run()
 }
 
-fn spawn_global_illumination(mut commands: Commands) {
-    commands.spawn((
+fn global_illumination() -> impl Scene {
+    bsn! {
         DirectionalLight {
             shadow_maps_enabled: true,
             shadow_normal_bias: 1.0,
             shadow_depth_bias: 0.05,
-            ..default()
-        },
+        }
         Transform::from_rotation(
             Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
-        ),
-    ));
+        )
+    }
 }
 
-fn spawn_voxel(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Mesh3d(meshes.add(chunk::build_mesh())),
-        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
+fn voxel() -> impl Scene {
+    bsn! {
+        #Voxel
+        Transform::from_xyz(0.0, 0.0, 0.0)
+        Mesh3d(asset_value(face::build_mesh()))
+        MeshMaterial3d<StandardMaterial>(asset_value(Color::linear_rgb(0.2, 0.7, 0.3)))
+    }
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
