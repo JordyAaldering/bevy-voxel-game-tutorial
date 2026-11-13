@@ -74,7 +74,7 @@ fn global_illumination() -> impl Scene {
             shadow_depth_bias: 0.05,
         }
         Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
+            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
         )
     }
 }
@@ -97,7 +97,7 @@ fn spawn_world(
         commands.spawn((
             Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
-            Mesh3d(meshes.add(build_mesh(chunk, coord, &world))),
+            Mesh3d(meshes.add(build_mesh(&world, chunk, coord))),
             MeshMaterial3d(chunk_material.0.clone()),
         ));
     }
@@ -120,9 +120,9 @@ fn generate_chunk(coord: ChunkCoord) -> ChunkData {
 }
 
 fn build_mesh(
+    world: &VoxelWorld,
     chunk: &ChunkData,
     chunk_pos: ChunkCoord,
-    world: &VoxelWorld,
 ) -> Mesh {
     let mut mesh = MeshData::default();
 
@@ -152,7 +152,7 @@ fn is_face_visible(
     }
 
     // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
-    let Ok(compass): Result<CompassQuadrant, ()> = direction.try_into() else {
+    let Ok(compass) = direction.try_into() else {
         return direction == Direction::Top;
     };
 

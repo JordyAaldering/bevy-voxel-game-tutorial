@@ -38,6 +38,10 @@ In particular, you might want to play around with `perceptual_roughness` and `re
 
 ## Getting the right UV coordinates
 
+If we were to use the new material as-is, with the same UV coordinates as before, the world would look like:
+
+![](img/chapter06-uv.png)
+
 We need some way to map from coordinates in the spritesheet to UV coordinates for the mesh.
 For this we need two things: the total number of rows and columns in the spritesheet, and the coordinate of the tile we want to use.
 Create a `TextureAtlas` and `TextureAtlasCoord` to store this information.
