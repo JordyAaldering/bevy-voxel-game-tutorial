@@ -71,10 +71,15 @@ where
 }
 
 fn player() -> impl Scene {
+    let position = {
+        #[cfg(not(feature = "chapter04"))] { vec3(1.5, 2.0, 4.0) }
+        #[cfg(feature = "chapter04")] { vec3(5.0, 6.0, 11.0) }
+    };
+
     bsn!{
         #Player
         Camera3d
-        Transform::from_xyz(1.5, 2.0, 4.0)
+        Transform::from_translation(position)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y)
         Projection::Perspective(PerspectiveProjection {
             fov: 0.9,

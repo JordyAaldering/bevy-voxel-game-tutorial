@@ -1,14 +1,15 @@
+mod debug_gizmos;
 mod player;
 mod screenshot;
 
 use crate::{
+    debug_gizmos::DebugGizmosPlugin,
     player::PlayerPlugin,
     screenshot::ScreenshotPlugin,
 };
 
 use bevy::{
     prelude::*,
-    pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -25,14 +26,10 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
-            WireframePlugin::default(),
             ScreenshotPlugin::default(),
+            DebugGizmosPlugin { wireframe: true, ..default() },
             PlayerPlugin::new(is_focused),
         ))
-        .insert_resource(WireframeConfig {
-            global: true,
-            ..default()
-        })
         .add_systems(Startup, (
             global_illumination.spawn(),
             cube.spawn(),

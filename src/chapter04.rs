@@ -1,10 +1,14 @@
 mod coords;
+mod debug_gizmos;
+mod player;
 mod screenshot;
 
 use crate::{
     chunk::{ChunkData, CHUNK_WIDTH, CHUNK_HEIGHT},
-    coords::*,
+    coords::{Direction, VoxelCoord},
+    debug_gizmos::DebugGizmosPlugin,
     meshdata::MeshData,
+    player::PlayerPlugin,
     screenshot::ScreenshotPlugin,
     voxel::VoxelType,
 };
@@ -14,13 +18,10 @@ use std::{mem, ops::{Index, IndexMut}};
 use bevy::{
     prelude::*,
     asset::RenderAssetUsages,
-    input::mouse::AccumulatedMouseMotion,
     mesh::{Indices, PrimitiveTopology},
-    pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
-    prelude::*,
     bevy_egui::{
         prelude::*,
         input::EguiWantsInput,
@@ -28,82 +29,8 @@ use bevy_inspector_egui::{
     quick::WorldInspectorPlugin,
 };
 
-mod player {
-    use super::*;
-
-    #[derive(better_default::Default, Resource, Reflect, InspectorOptions)]
-    #[reflect(Resource, InspectorOptions)]
-    struct CameraSettings {
-        #[default(5.0)]
-        #[inspector(min = 0.1, max = 20.0)]
-        move_speed: f32,
-        #[default(0.0025)]
-        #[inspector(min = 0.0001, max = 0.01)]
-        mouse_sensitivity: f32,
-    }
-
-    pub struct PlayerPlugin;
-
-    impl Plugin for PlayerPlugin {
-        fn build(&self, app: &mut App) {
-            app.init_resource::<CameraSettings>()
-                .register_type::<CameraSettings>()
-                .add_systems(Startup, player_spawn)
-                .add_systems(Update,
-                    (player_look, player_move)
-                        .run_if(is_focused)
-                );
-        }
-    }
-
-    fn player_spawn(mut commands: Commands) {
-        commands.spawn((
-            Name::new("Player"),
-            Camera3d::default(),
-            Projection::Perspective(PerspectiveProjection {
-                fov: 0.9,
-                ..default()
-            }),
-            Msaa::Off,
-            Transform::from_xyz(5.0, 6.0, 11.0)
-                .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
-        ));
-    }
-
-    fn player_look(
-        settings: Res<CameraSettings>,
-        mouse: Res<AccumulatedMouseMotion>,
-        mut camera: Single<&mut Transform, With<Camera3d>>,
-    ) {
-        let delta = mouse.delta;
-
-        if delta != Vec2::ZERO {
-            camera.rotate_y(-delta.x * settings.mouse_sensitivity);
-            camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
-        }
-    }
-
-    fn player_move(
-        time: Res<Time>,
-        settings: Res<CameraSettings>,
-        keyboard: Res<ButtonInput<KeyCode>>,
-        mut camera: Single<&mut Transform, With<Camera3d>>,
-    ) {
-        let delta = vec3(
-            f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-            f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
-            f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-        );
-
-        if delta != Vec3::ZERO {
-            let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
-            camera.translation += settings.move_speed * time.delta_secs() * direction.normalize();
-        }
-    }
-}
-
 mod voxel {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy)]
     pub enum VoxelType {
         Air,
         Grass,
@@ -111,7 +38,7 @@ mod voxel {
 
     impl VoxelType {
         pub fn is_transparent(self) -> bool {
-            self == VoxelType::Air
+            matches!(self, VoxelType::Air)
         }
     }
 }
@@ -124,14 +51,12 @@ mod chunk {
 
     #[derive(Clone)]
     pub struct ChunkData {
-        _coord: ChunkCoord,
         voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     }
 
     impl ChunkData {
-        pub fn new(coord: ChunkCoord) -> Self {
+        pub fn new() -> Self {
             Self {
-                _coord: coord,
                 voxels: [VoxelType::Air; _],
             }
         }
@@ -160,7 +85,7 @@ mod chunk {
             let mut mesh_data = MeshData::default();
 
             for (voxel_pos, _) in self.iter()
-                .filter(|(_, v)| *v != VoxelType::Air)
+                .filter(|(_, v)| matches!(v, VoxelType::Air))
             {
                 for direction in Direction::iter() {
                     if self.is_face_visible(voxel_pos, direction) {
@@ -297,17 +222,13 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
-            WireframePlugin::default(),
             ScreenshotPlugin::default(),
-            player::PlayerPlugin,
+            DebugGizmosPlugin { wireframe: true, ..default() },
+            PlayerPlugin::new(is_focused),
         ))
-        .insert_resource(WireframeConfig {
-            global: true,
-            ..default()
-        })
         .add_systems(Startup, (
-            spawn_global_illumination,
-            spawn_chunk,
+            global_illumination.spawn(),
+            chunk.spawn(),
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -315,28 +236,21 @@ fn main() -> AppExit {
         .run()
 }
 
-fn spawn_global_illumination(mut commands: Commands) {
-    commands.spawn((
+fn global_illumination() -> impl Scene {
+    bsn! {
         DirectionalLight {
             shadow_maps_enabled: true,
             shadow_normal_bias: 1.0,
             shadow_depth_bias: 0.05,
-            ..default()
-        },
+        }
         Transform::from_rotation(
             Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
-        ),
-    ));
+        )
+    }
 }
 
-fn spawn_chunk(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let coord = ChunkCoord::new(0, 0);
-    let mut chunk = ChunkData::new(coord);
-
+fn chunk() -> impl Scene {
+    let mut chunk = ChunkData::new();
     for z in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for x in 0..CHUNK_WIDTH {
@@ -346,12 +260,12 @@ fn spawn_chunk(
         }
     }
 
-    commands.spawn((
-        Name::new(format!("Chunk {coord}")),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Mesh3d(meshes.add(chunk.build_mesh())),
-        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
+    bsn! {
+        #Chunk
+        Transform
+        Mesh3d(asset_value(chunk.build_mesh()))
+        MeshMaterial3d<StandardMaterial>(asset_value(Color::linear_rgb(0.2, 0.7, 0.3)))
+    }
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
