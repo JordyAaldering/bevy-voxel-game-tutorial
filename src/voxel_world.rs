@@ -3,6 +3,11 @@ use crate::{ChunkCoord, ChunkData};
 use crate::{VoxelType, WorldCoord};
 #[cfg(since08)]
 use crate::{Chunk, ChunkNeighbors, NeedsRemesh, CHUNK_WIDTH};
+#[cfg(since10)]
+use crate::{NeedsDespawn, Player};
+
+#[cfg(since08)]
+use std::sync::Arc;
 
 use better_default::Default;
 use bevy::{
@@ -22,6 +27,9 @@ pub const ATLAS_COLUMNS: u32 = 9;
 #[cfg(since07)]
 pub const ATLAS_ROWS: u32 = 10;
 
+#[cfg(since10)]
+const CHUNK_LOAD_RADIUS: i32 = 2;
+
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
 
@@ -30,7 +38,7 @@ type TChunkData = ChunkData;
 /// Chunk data is shared with meshing tasks. Writes go through [`Arc::make_mut`],
 /// which only copies a chunk if a task is still reading it.
 #[cfg(since08)]
-type TChunkData = std::sync::Arc<ChunkData>;
+type TChunkData = Arc<ChunkData>;
 
 #[derive(Default, Resource)]
 pub struct VoxelWorld {
@@ -62,6 +70,15 @@ impl Plugin for VoxelWorldPlugin {
 
         #[cfg(since08)]
         app.add_systems(PostUpdate, (
+            poll_mesh_tasks,
+            remesh_chunks,
+        ).chain());
+
+        #[cfg(since10)]
+        app.add_systems(Update, (
+            spawn_chunks_around_player,
+            retire_distant_chunks,
+            despawn_retired_chunks,
             poll_mesh_tasks,
             remesh_chunks,
         ).chain());
@@ -126,11 +143,11 @@ impl VoxelWorld {
         )).id();
 
         if let Some(chunk) = self.get_chunk_mut(coord) {
-            std::sync::Arc::make_mut(chunk).set_entity(entity);
+            Arc::make_mut(chunk).set_entity(entity);
         } else {
             let mut chunk = ChunkData::new(coord, entity);
             generate_chunk(&mut chunk);
-            self.add_chunk(coord, std::sync::Arc::new(chunk));
+            self.add_chunk(coord, Arc::new(chunk));
         }
 
         // Existing neighbors previously treated this side as open, so their border faces change
@@ -154,7 +171,7 @@ impl VoxelWorld {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
         let chunk = self.get_chunk_mut(chunk_pos).unwrap();
-        std::sync::Arc::make_mut(chunk)[voxel_pos] = voxel;
+        Arc::make_mut(chunk)[voxel_pos] = voxel;
 
         if let Some(entity) = chunk.entity() {
             commands.entity(entity).insert(NeedsRemesh);
@@ -193,6 +210,14 @@ impl VoxelWorld {
     //     let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
     //     self.chunks.get(&neighbor_pos).map(|chunk| &**chunk)
     // }
+}
+
+#[cfg(since10)]
+impl VoxelWorld {
+    fn is_loaded(&self, coord: ChunkCoord) -> bool {
+        self.chunks.get(&coord)
+            .is_some_and(|chunk| chunk.entity().is_some())
+    }
 }
 
 #[cfg(only05)]
@@ -278,7 +303,7 @@ fn remesh_chunks(
         };
 
         // The task cannot borrow the world, so it gets shared handles to the data it needs
-        let data = std::sync::Arc::clone(data);
+        let data = Arc::clone(data);
         let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
         let atlas: TextureAtlasLayout = atlas.0.clone();
         let task = pool.spawn(async move { data.build_mesh(&neighbors, &atlas) });
@@ -317,4 +342,66 @@ fn poll_mesh_tasks(
     }
 
     Ok(())
+}
+
+#[cfg(since10)]
+fn spawn_chunks_around_player(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    material: Res<ChunkMaterial>,
+    player: Single<&Transform, With<Player>>,
+    config: Res<crate::TerrainConfig>,
+) {
+    let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
+
+    for dz in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
+        for dx in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
+            let coord = ChunkCoord::new(center.x + dx, center.z + dz);
+
+            if world.is_loaded(coord) {
+                continue;
+            }
+
+            let entity = world.spawn_chunk(&mut commands, coord,
+                |chunk| crate::generate_chunk(chunk, &config));
+            commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
+        }
+    }
+}
+
+#[cfg(since10)]
+fn retire_distant_chunks(
+    mut commands: Commands,
+    player: Single<&Transform, With<Player>>,
+    chunks: Query<(Entity, &Chunk, Has<NeedsDespawn>)>,
+) {
+    let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
+
+    for (entity, chunk, retired) in &chunks {
+        let in_range = (chunk.coord().x - center.x).abs() <= CHUNK_LOAD_RADIUS
+            && (chunk.coord().z - center.z).abs() <= CHUNK_LOAD_RADIUS;
+
+        if !in_range && !retired {
+            commands.entity(entity).insert(NeedsDespawn);
+        } else if in_range && retired {
+            commands.entity(entity).remove::<NeedsDespawn>();
+        }
+    }
+}
+
+#[cfg(since10)]
+fn despawn_retired_chunks(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
+) {
+    for (entity, chunk) in &retired_chunks {
+        trace!("Despawning chunk {}", chunk.coord());
+        // Keep the voxel data; only the entity goes away
+        if let Some(data) = world.chunks.get_mut(&chunk.coord()) {
+            Arc::make_mut(data).clear_entity();
+        }
+
+        commands.entity(entity).despawn();
+    }
 }

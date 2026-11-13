@@ -6,7 +6,7 @@ default-run = "main"
 
 [[bin]]
 name = "main"
-path = "src/chapter09.rs"
+path = "src/chapter10.rs"
 
 #[[bin]]
 #name = "structure_editor"

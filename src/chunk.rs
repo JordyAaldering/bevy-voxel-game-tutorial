@@ -27,6 +27,11 @@ pub struct Chunk {
 #[component(storage = "SparseSet")]
 pub struct NeedsRemesh;
 
+#[cfg(since10)]
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct NeedsDespawn;
+
 #[derive(Clone)]
 pub struct ChunkData {
     #[allow(unused)]
@@ -98,6 +103,11 @@ impl ChunkData {
     pub fn set_entity(&mut self, entity: Entity) {
         debug_assert!(self.entity.is_none());
         self.entity = Some(entity);
+    }
+
+    #[cfg(since10)]
+    pub fn clear_entity(&mut self) {
+        self.entity = None;
     }
 
     /// Builds the mesh from owned data only, so it can run on another thread.
