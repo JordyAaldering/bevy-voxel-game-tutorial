@@ -6,7 +6,7 @@ default-run = "main"
 
 [[bin]]
 name = "main"
-path = "src/chapter20.rs"
+path = "src/chapter02.rs"
 
 #[[bin]]
 #name = "structure_editor"
@@ -17,26 +17,27 @@ name = "noise_viewer"
 path = "src/noise_viewer.rs"
 
 [features]
-chapter-01 = []
-chapter-02 = ["chapter-01"]
-chapter-03 = ["chapter-02"]
-chapter-04 = ["chapter-03"]
-chapter-05 = ["chapter-04"]
-chapter-06 = ["chapter-05"]
-chapter-07 = ["chapter-06"]
-chapter-08 = ["chapter-07"]
-chapter-09 = ["chapter-08"]
-chapter-10 = ["chapter-09"]
-chapter-11 = ["chapter-10"]
-chapter-12 = ["chapter-11"]
-chapter-13 = ["chapter-12"]
-chapter-14 = ["chapter-13"]
-chapter-15 = ["chapter-14"]
-chapter-16 = ["chapter-15"]
-chapter-17 = ["chapter-16"]
-chapter-18 = ["chapter-17"]
-chapter-19 = ["chapter-18"]
-chapter-20 = ["chapter-19"]
+default = ["chapter02"]
+chapter01 = []
+chapter02 = ["chapter01"]
+chapter03 = ["chapter02"]
+chapter04 = ["chapter03"]
+chapter05 = ["chapter04"]
+chapter06 = ["chapter05"]
+chapter07 = ["chapter06"]
+chapter08 = ["chapter07"]
+chapter09 = ["chapter08"]
+chapter10 = ["chapter09"]
+chapter11 = ["chapter10"]
+chapter12 = ["chapter11"]
+chapter13 = ["chapter12"]
+chapter14 = ["chapter13"]
+chapter15 = ["chapter14"]
+chapter16 = ["chapter15"]
+chapter17 = ["chapter16"]
+chapter18 = ["chapter17"]
+chapter19 = ["chapter18"]
+chapter20 = ["chapter19"]
 
 [profile.dev]
 opt-level = 1

@@ -1,83 +1,22 @@
+mod player;
 mod screenshot;
 
 use crate::{
+    player::PlayerPlugin,
     screenshot::ScreenshotPlugin,
 };
 
 use bevy::{
     prelude::*,
-    input::mouse::AccumulatedMouseMotion,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-
-mod player {
-    use super::*;
-
-    const MOVE_SPEED: f32 = 5.0;
-    const MOUSE_SENSITIVITY: f32 = 0.0025;
-
-    pub struct PlayerPlugin;
-
-    impl Plugin for PlayerPlugin {
-        fn build(&self, app: &mut App) {
-            app.add_systems(Startup, player_spawn)
-                .add_systems(Update,
-                    (player_look, player_move)
-                        .run_if(is_focused)
-                );
-        }
-    }
-
-    fn player_spawn(mut commands: Commands) {
-        commands.spawn((
-            Name::new("Player"),
-            Camera3d::default(),
-            Projection::Perspective(PerspectiveProjection {
-                fov: 0.9,
-                ..default()
-            }),
-            Msaa::Off,
-            Transform::from_xyz(1.5, 2.0, 4.0)
-                .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
-        ));
-    }
-
-    fn player_look(
-        mouse: Res<AccumulatedMouseMotion>,
-        mut camera: Single<&mut Transform, With<Camera3d>>,
-    ) {
-        let delta = mouse.delta;
-
-        if delta != Vec2::ZERO {
-            camera.rotate_y(-delta.x * MOUSE_SENSITIVITY);
-            camera.rotate_local_x(-delta.y * MOUSE_SENSITIVITY);
-        }
-    }
-
-    fn player_move(
-        time: Res<Time>,
-        keyboard: Res<ButtonInput<KeyCode>>,
-        mut camera: Single<&mut Transform, With<Camera3d>>,
-    ) {
-        let delta = vec3(
-            f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-            f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
-            f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-        );
-
-        if delta != Vec3::ZERO {
-            let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
-            camera.translation += MOVE_SPEED * time.delta_secs() * direction.normalize();
-        }
-    }
-}
 
 fn main() -> AppExit {
     App::new()
         .add_plugins((
             DefaultPlugins,
             ScreenshotPlugin::default(),
-            player::PlayerPlugin,
+            PlayerPlugin::new(is_focused),
         ))
         .add_systems(Startup, (
             spawn_global_illumination,
