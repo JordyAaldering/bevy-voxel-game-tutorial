@@ -10,8 +10,9 @@ use bevy::{
 use bevy_inspector_egui::{
     prelude::*,
     InspectorOptions,
-    quick::ResourceInspectorPlugin,
 };
+#[cfg(all(feature = "chapter02", not(feature = "chapter03")))]
+use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 
 #[cfg(not(feature = "chapter02"))]
 const MOVE_SPEED: f32 = 5.0;
