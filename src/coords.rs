@@ -5,7 +5,6 @@
 
 mod aabb;
 mod axis;
-mod compass;
 mod direction;
 mod chunk_coord;
 mod voxel_coord;
@@ -13,7 +12,6 @@ mod world_coord;
 
 pub use aabb::Aabb;
 pub use axis::Axis;
-pub use compass::Compass;
 pub use direction::Direction;
 pub use chunk_coord::ChunkCoord;
 pub use voxel_coord::VoxelCoord;

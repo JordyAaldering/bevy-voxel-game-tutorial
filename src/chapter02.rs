@@ -13,10 +13,7 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
-    bevy_egui::{
-        prelude::*,
-        input::EguiWantsInput,
-    },
+    bevy_egui::prelude::*,
     quick::WorldInspectorPlugin,
 };
 
@@ -34,10 +31,11 @@ fn main() -> AppExit {
             global_illumination.spawn(),
             cube.spawn(),
         ))
-        .add_systems(Update, (
-            toggle_cursor,
-        ))
         .run()
+}
+
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
 }
 
 fn global_illumination() -> impl Scene {
@@ -59,29 +57,5 @@ fn cube() -> impl Scene {
         Transform::from_xyz(0.5, 0.5, 0.5)
         Mesh3d(asset_value(Cuboid::from_length(1.0)))
         MeshMaterial3d<StandardMaterial>(asset_value(Color::linear_rgb(0.2, 0.7, 0.3)))
-    }
-}
-
-fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
-    cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn toggle_cursor(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    egui_wants_input: Res<EguiWantsInput>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-) {
-    // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape) {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
-    }
-    // Recapture when a click occurs outside egui
-    if mouse.just_pressed(MouseButton::Left)
-        && !egui_wants_input.wants_pointer_input()
-    {
-        cursor.grab_mode = CursorGrabMode::Locked;
-        cursor.visible = false;
     }
 }

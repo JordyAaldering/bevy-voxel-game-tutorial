@@ -5,10 +5,12 @@ use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 #[cfg(feature = "chapter02")]
 use bevy_inspector_egui::{
     prelude::*,
+    bevy_egui::input::EguiWantsInput,
     InspectorOptions,
 };
 #[cfg(all(feature = "chapter02", not(feature = "chapter03")))]
@@ -61,6 +63,7 @@ where
 
         app.add_systems(Startup, player.spawn())
             .add_systems(Update, (
+                toggle_cursor,
                 (
                     player_look,
                     player_move,
@@ -126,5 +129,46 @@ fn player_move(
     if delta != Vec3::ZERO {
         let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
         camera.translation += speed * time.delta_secs() * direction.normalize();
+    }
+}
+
+#[cfg(not(feature = "chapter02"))]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    // Release the cursor when escape is pressed
+    if keyboard.just_pressed(KeyCode::Escape) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+
+    // Recapture when a click occurs
+    if mouse.just_pressed(MouseButton::Left) {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
+    }
+}
+
+#[cfg(feature = "chapter02")]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    egui_wants_input: Res<EguiWantsInput>,
+) {
+    // Release the cursor when escape is pressed
+    if keyboard.just_pressed(KeyCode::Escape) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+
+    // Recapture when a click occurs outside egui
+    if mouse.just_pressed(MouseButton::Left)
+        && !egui_wants_input.wants_pointer_input()
+    {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
     }
 }

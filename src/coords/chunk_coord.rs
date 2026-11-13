@@ -1,8 +1,6 @@
-use super::Compass;
-
 use crate::CHUNK_WIDTH;
 
-use bevy::math::{Vec3, vec3};
+use bevy::math::{CompassQuadrant, Vec3, vec3};
 
 /// Coordinate of a chunk in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -33,15 +31,15 @@ impl ChunkCoord {
     }
 }
 
-impl std::ops::Add<Compass> for ChunkCoord {
+impl std::ops::Add<CompassQuadrant> for ChunkCoord {
     type Output = Self;
 
-    fn add(self, rhs: Compass) -> Self::Output {
+    fn add(self, rhs: CompassQuadrant) -> Self::Output {
         match rhs {
-            Compass::Right => Self { x: self.x + 1, ..self },
-            Compass::Left  => Self { x: self.x - 1, ..self },
-            Compass::Front => Self { z: self.z + 1, ..self },
-            Compass::Back  => Self { z: self.z - 1, ..self },
+            CompassQuadrant::East => Self { x: self.x + 1, ..self },
+            CompassQuadrant::West => Self { x: self.x - 1, ..self },
+            CompassQuadrant::North => Self { z: self.z + 1, ..self },
+            CompassQuadrant::South => Self { z: self.z - 1, ..self },
         }
     }
 }

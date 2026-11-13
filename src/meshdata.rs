@@ -1,6 +1,8 @@
-use crate::{Direction, density::Density};
+use std::marker::PhantomData;
 
-use std::mem;
+use crate::Direction;
+#[cfg(feature = "chapter20")]
+use crate::Density;
 
 use bevy::{
     prelude::*,
@@ -8,15 +10,19 @@ use bevy::{
     mesh::{Indices, PrimitiveTopology},
 };
 
+#[cfg_attr(all(feature = "chapter03", not(feature = "chapter20")), derive(Default))]
 pub struct MeshData<'a> {
+    #[cfg(feature = "chapter20")]
     atlas: &'a TextureAtlasLayout,
     indices: Vec<u32>,
     vertices: Vec<Vec3>,
     normals: Vec<Vec3>,
     uvs: Vec<Vec2>,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> MeshData<'a> {
+    #[cfg(feature = "chapter20")]
     pub fn new(atlas: &'a TextureAtlasLayout) -> Self {
         Self {
             atlas,
@@ -24,17 +30,27 @@ impl<'a> MeshData<'a> {
             indices: Vec::new(),
             normals: Vec::new(),
             uvs: Vec::new(),
+            _marker: PhantomData,
         }
     }
 
     pub fn build(&mut self) -> Mesh {
         Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
-            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut self.vertices))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut self.normals))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::mem::take(&mut self.uvs))
+            .with_inserted_indices(Indices::U32(std::mem::take(&mut self.indices)))
     }
 
+    #[cfg(all(feature = "chapter03", not(feature = "chapter20")))]
+    pub fn add_quad(&mut self, direction: Direction, origin: Vec3) {
+        let start = self.vertices.len() as u32;
+        self.indices.extend(quad_indices(start));
+        self.vertices.extend(quad_vertices(direction, origin));
+        self.normals.extend(quad_normals(direction));
+        self.uvs.extend(quad_uvs());
+    }
+    #[cfg(feature = "chapter20")]
     pub fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: usize) {
         let start = self.vertices.len() as u32;
         self.indices.extend(quad_indices(start));
@@ -44,6 +60,7 @@ impl<'a> MeshData<'a> {
     }
 
     /// Appends a triangle with mesh-local positions and atlas-space UVs.
+    #[cfg(feature = "chapter20")]
     pub fn add_triangle(&mut self, vertices: [Vec3; 3], normals: [Vec3; 3], uvs: [Vec2; 3]) {
         let start = self.vertices.len() as u32;
         self.indices.extend([start, start + 1, start + 2]);
@@ -57,6 +74,7 @@ impl<'a> MeshData<'a> {
     /// (0,0,0), (1,0,0), (1,0,1), (0,0,1), then the same order at y = 1.
     /// `texture` resolves the material of a solid corner for a face direction.
     /// Solid corners without a material are allowed and do not produce triangles.
+    #[cfg(feature = "chapter20")]
     pub fn add_marching_cube(
         &mut self,
         corners: [(Vec3, Density); 8],
@@ -205,36 +223,19 @@ impl<'a> MeshData<'a> {
     }
 }
 
-fn normal_direction(normal: Vec3) -> Direction {
-    let abs = normal.abs();
-    if abs.y >= abs.x && abs.y >= abs.z {
-        if normal.y >= 0.0 { Direction::Top } else { Direction::Bottom }
-    } else if abs.x >= abs.z {
-        if normal.x >= 0.0 { Direction::Right } else { Direction::Left }
-    } else if normal.z >= 0.0 {
-        Direction::Front
-    } else {
-        Direction::Back
-    }
-}
-
-/// Returns the four vertices of the quad.
-///
-/// The quad is defined by the direction of the face and the origin of the voxel.
+/// The vertices for a quad in the given direction.
 ///
 /// ```text
-///     (0,1,0)——————————————————(1,1,0)
-///          /|                 /|
-///         / |                / |
-///        /  |               /  |
-/// (0,1,1)————————————(1,1,1)   |
-///       |   |              |   |
-///       |   |              |   |
-///       |   |              |   |
-///       |  (0,0,0)—————————|——(1,0,0)
-///       | /                | /
-///       |/                 |/
-/// (0,0,1)——————————————————(1,0,1)
+///     (0,1,0)—————————————(1,1,0)
+///         / |            / |
+///        /  |           /  |
+/// (0,1,1)————————(1,1,1)   |
+///       |   |          |   |
+///       |   |          |   |
+///       |  (0,0,0)—————|——(1,0,0)
+///       | /            | /
+///       |/             |/
+/// (0,0,1)——————————————(1,0,1)
 /// ```
 pub fn quad_vertices(direction: Direction, origin: Vec3) -> [Vec3; 4] {
     match direction {
@@ -277,9 +278,8 @@ pub fn quad_vertices(direction: Direction, origin: Vec3) -> [Vec3; 4] {
     }
 }
 
-/// Returns the vertex indices for a quad (two triangles).
+/// The vertex indices for a quad (two triangles).
 ///
-/// Vertices are ordered as viewed from outside the voxel:
 /// ```text
 /// 2————3
 /// | \  |
@@ -299,10 +299,34 @@ fn quad_indices(start: u32) -> [u32; 6] {
     ]
 }
 
+/// The normals of the corners of a quad.
 fn quad_normals(direction: Direction) -> [Vec3; 4] {
-    [direction.vec3(); 4]
+    let normal = match direction {
+        Direction::Right  => Vec3::X,
+        Direction::Left   => Vec3::NEG_X,
+        Direction::Top    => Vec3::Y,
+        Direction::Bottom => Vec3::NEG_Y,
+        Direction::Front  => Vec3::Z,
+        Direction::Back   => Vec3::NEG_Z,
+    };
+    [normal; 4]
 }
 
+/// The UV coordinates of the corners of a quad.
+///
+/// Note that the y-axis is flipped in UV coordinates;
+/// the bottom left voxel has $y = 1$ in UV coordinates.
+#[cfg(not(feature = "chapter20"))]
+fn quad_uvs() -> [Vec2; 4] {
+    [
+        vec2(0.0, 1.0), // Bottom left
+        vec2(1.0, 1.0), // Bottom right
+        vec2(0.0, 0.0), // Top left
+        vec2(1.0, 0.0), // Top right
+    ]
+}
+
+#[cfg(feature = "chapter20")]
 fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
     let rect = atlas.textures[index];
     let size = atlas.size.as_vec2();
@@ -316,4 +340,18 @@ fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
         vec2(min.x, min.y), // Top left
         vec2(max.x, min.y), // Top right
     ]
+}
+
+#[cfg(feature = "chapter20")]
+fn normal_direction(normal: Vec3) -> Direction {
+    let abs = normal.abs();
+    if abs.y >= abs.x && abs.y >= abs.z {
+        if normal.y >= 0.0 { Direction::Top } else { Direction::Bottom }
+    } else if abs.x >= abs.z {
+        if normal.x >= 0.0 { Direction::Right } else { Direction::Left }
+    } else if normal.z >= 0.0 {
+        Direction::Front
+    } else {
+        Direction::Back
+    }
 }
