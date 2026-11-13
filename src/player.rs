@@ -1,11 +1,18 @@
+#[cfg(since07)]
 use crate::is_focused;
 #[cfg(since07)]
 use crate::{is_gamemode_spectator, is_gamemode_survival};
 #[cfg(since08)]
 use crate::{VoxelWorld, meshdata, raycast::{self, VoxelHit}, VoxelType};
+#[cfg(since09)]
+use crate::{TerrainConfig, CHUNK_HEIGHT};
 
 #[cfg(since02)]
 use better_default::Default;
+#[cfg(since09)]
+use bevy::ecs::system::command;
+#[cfg(since09)]
+use bevy::state::commands;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
@@ -71,8 +78,12 @@ impl Plugin for PlayerPlugin {
         #[cfg(only02)]
         app.add_plugins(ResourceInspectorPlugin::<CameraSettings>::default());
 
-        app.add_systems(Startup, player.spawn())
-            .add_systems(Update, (
+        #[cfg(until08)]
+        app.add_systems(Startup, player.spawn());
+        #[cfg(since09)]
+        app.add_systems(Startup, spawn_player);
+
+        app.add_systems(Update, (
                 toggle_cursor,
                 (
                     player_look,
@@ -149,7 +160,7 @@ fn player() -> impl Scene {
     }
 }
 
-#[cfg(since07)]
+#[cfg(all(since07, until08))]
 fn player() -> impl Scene {
     bsn! {
         #Player
@@ -166,6 +177,34 @@ fn player() -> impl Scene {
             Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0)
         ]
     }
+}
+
+#[cfg(since09)]
+fn spawn_player(
+    mut commands: Commands,
+    config: Res<TerrainConfig>,
+) {
+    let world_height = config.height.sample2(config.seed, 0.0, 0.0) as usize;
+    let world_height = world_height.clamp(0, CHUNK_HEIGHT - 1);
+
+    commands.spawn((
+            Name::new("Player"),
+            Player::default(),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
+            InheritedVisibility::default(),
+            Transform::from_xyz(0.5, world_height as f32 + 1.0, 0.5),
+        ))
+        .with_children(|commands| {
+            commands.spawn((
+                PlayerCamera,
+                Camera3d::default(),
+                Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
+            ));
+        });
 }
 
 #[cfg(until06)]

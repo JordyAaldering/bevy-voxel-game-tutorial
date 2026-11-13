@@ -26,7 +26,6 @@ use crate::{
 
 use bevy::{
     prelude::*,
-    math::CompassQuadrant,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
@@ -124,7 +123,7 @@ fn spawn_world(
     for z in -1..=1 {
         for x in -1..=1 {
             let coord = ChunkCoord::new(x, z);
-            let entity = world.spawn_chunk(&mut commands, coord);
+            let entity = world.spawn_chunk(&mut commands, coord, generate_chunk);
             commands.entity(entity).insert(MeshMaterial3d(chunk_material.0.clone()));
         }
     }
@@ -146,56 +145,56 @@ fn generate_chunk(chunk: &mut ChunkData) {
     }
 }
 
-/// Builds the mesh from owned data only, so it can run on another thread.
-fn build_mesh(
-    chunk: &ChunkData,
-    neighbors: &ChunkNeighbors,
-    atlas: &TextureAtlasLayout,
-) -> Mesh {
-    let mut mesh = MeshData::new(atlas);
+// /// Builds the mesh from owned data only, so it can run on another thread.
+// fn build_mesh(
+//     chunk: &ChunkData,
+//     neighbors: &ChunkNeighbors,
+//     atlas: &TextureAtlasLayout,
+// ) -> Mesh {
+//     let mut mesh = MeshData::new(atlas);
 
-    for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, v)| !matches!(v, VoxelType::Air))
-    {
-        for direction in Direction::ALL {
-            if is_face_visible(chunk, neighbors, voxel_pos, direction) {
-                let origin = voxel_pos.local_position();
-                let texture = voxel.texture(direction);
-                mesh.add_quad(direction, origin, texture);
-            }
-        }
-    }
+//     for (voxel_pos, voxel) in chunk.iter()
+//         .filter(|(_, v)| !matches!(v, VoxelType::Air))
+//     {
+//         for direction in Direction::ALL {
+//             if is_face_visible(chunk, neighbors, voxel_pos, direction) {
+//                 let origin = voxel_pos.local_position();
+//                 let texture = voxel.texture(direction);
+//                 mesh.add_quad(direction, origin, texture);
+//             }
+//         }
+//     }
 
-    mesh.build()
-}
+//     mesh.build()
+// }
 
-fn is_face_visible(
-    chunk: &ChunkData,
-    neighbors: &ChunkNeighbors,
-    voxel_pos: VoxelCoord,
-    direction: Direction,
-) -> bool {
-    if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
-        return neighbor.is_transparent();
-    }
+// fn is_face_visible(
+//     chunk: &ChunkData,
+//     neighbors: &ChunkNeighbors,
+//     voxel_pos: VoxelCoord,
+//     direction: Direction,
+// ) -> bool {
+//     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
+//         return neighbor.is_transparent();
+//     }
 
-    // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
-    let Ok(compass) = direction.try_into() else {
-        return direction == Direction::Top;
-    };
+//     // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
+//     let Ok(compass) = direction.try_into() else {
+//         return direction == Direction::Top;
+//     };
 
-    // If the chunk does not exist, we assume it is empty and show the face
-    let Some(neighbor_chunk) = &neighbors[compass] else {
-        return true;
-    };
+//     // If the chunk does not exist, we assume it is empty and show the face
+//     let Some(neighbor_chunk) = &neighbors[compass] else {
+//         return true;
+//     };
 
-    let neighbor_pos = match compass {
-        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
-        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
-        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
-    };
+//     let neighbor_pos = match compass {
+//         CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
+//         CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
+//         CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+//         CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+//     };
 
-    neighbor_chunk[neighbor_pos]
-        .is_transparent()
-}
+//     neighbor_chunk[neighbor_pos]
+//         .is_transparent()
+// }

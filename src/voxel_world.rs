@@ -2,7 +2,7 @@ use crate::{ChunkCoord, ChunkData};
 #[cfg(since07)]
 use crate::{VoxelType, WorldCoord};
 #[cfg(since08)]
-use crate::{Chunk, ChunkNeighbors, NeedsRemesh, CHUNK_WIDTH, build_mesh, generate_chunk};
+use crate::{Chunk, ChunkNeighbors, NeedsRemesh, CHUNK_WIDTH};
 
 use better_default::Default;
 use bevy::{
@@ -112,7 +112,12 @@ impl VoxelWorld {
 
     /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
     /// if it does not exist yet, so earlier modifications survive unloading.
-    pub fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
+    pub fn spawn_chunk(
+        &mut self,
+        commands: &mut Commands,
+        coord: ChunkCoord,
+        generate_chunk: impl FnOnce(&mut ChunkData),
+    ) -> Entity {
         let entity = commands.spawn((
             Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
@@ -183,6 +188,11 @@ impl VoxelWorld {
             }
         }
     }
+
+    // fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
+    //     let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
+    //     self.chunks.get(&neighbor_pos).map(|chunk| &**chunk)
+    // }
 }
 
 #[cfg(only05)]
@@ -271,7 +281,7 @@ fn remesh_chunks(
         let data = std::sync::Arc::clone(data);
         let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
         let atlas: TextureAtlasLayout = atlas.0.clone();
-        let task = pool.spawn(async move { build_mesh(&data, &neighbors, &atlas) });
+        let task = pool.spawn(async move { data.build_mesh(&neighbors, &atlas) });
 
         commands.entity(entity)
             .remove::<NeedsRemesh>()
