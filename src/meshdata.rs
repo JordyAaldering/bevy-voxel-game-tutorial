@@ -1,8 +1,6 @@
-use std::marker::PhantomData;
+use crate::*;
 
-use crate::Direction;
-#[cfg(since20)]
-use crate::Density;
+use std::marker::PhantomData;
 
 use bevy::{
     prelude::*,

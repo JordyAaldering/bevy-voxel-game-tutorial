@@ -6,7 +6,10 @@ pub use phase::*;
 
 use crate::*;
 
-#[cfg(since08)]
+#[allow(unused_imports)]
+use std::path::PathBuf;
+
+#[allow(unused_imports)]
 use bevy::prelude::*;
 
 /// ECS component of a chunk.
@@ -121,9 +124,14 @@ impl ChunkData {
     pub fn build_mesh(
         &self,
         neighbors: &ChunkNeighbors,
-        atlas: &TextureAtlasLayout,
+        #[cfg(until14)] atlas: &TextureAtlasLayout,
+        #[cfg(since15)] chunk_pos: ChunkCoord,
+        #[cfg(since15)] atlas: &VoxelAtlas,
     ) -> Mesh {
-        let mut mesh_data = MeshData::new(atlas);
+        #[cfg(until14)]
+        let mut mesh = MeshData::new(atlas);
+        #[cfg(since15)]
+        let mut mesh = MeshData::new(atlas.layout());
 
         for (voxel_pos, voxel) in self.iter()
             .filter(|(_, v)| !matches!(v, VoxelType::Air))
@@ -131,13 +139,18 @@ impl ChunkData {
             for direction in Direction::ALL {
                 if self.is_face_visible(neighbors, voxel_pos, direction) {
                     let origin = voxel_pos.local_position();
+
+                    #[cfg(until14)]
                     let texture = voxel.texture(direction);
-                    mesh_data.add_quad(direction, origin, texture);
+                    #[cfg(since15)]
+                    let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
+
+                    mesh.add_quad(direction, origin, texture);
                 }
             }
         }
 
-        mesh_data.build()
+        mesh.build()
     }
 
     fn is_face_visible(
@@ -232,4 +245,17 @@ impl ChunkData {
             }
         }
     }
+}
+
+/// Deterministic per-position hash, so a voxel keeps its variant when remeshed or reloaded.
+#[cfg(since15)]
+fn variant_seed(chunk_pos: ChunkCoord, voxel_pos: VoxelCoord) -> u32 {
+    let x = chunk_pos.x.wrapping_mul(CHUNK_WIDTH as i32).wrapping_add(voxel_pos.x as i32);
+    let z = chunk_pos.z.wrapping_mul(CHUNK_WIDTH as i32).wrapping_add(voxel_pos.z as i32);
+    let mut h = (x as u32).wrapping_mul(0x9E37_79B1)
+        ^ (voxel_pos.y as u32).wrapping_mul(0x85EB_CA77)
+        ^ (z as u32).wrapping_mul(0xC2B2_AE3D);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^ (h >> 13)
 }

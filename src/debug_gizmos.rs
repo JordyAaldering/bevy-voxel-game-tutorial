@@ -2,7 +2,7 @@ use bevy::{
     prelude::*,
     pbr::wireframe::{WireframeConfig, WireframePlugin},
 };
-#[cfg(since12)]
+#[allow(unused_imports)]
 use bevy_inspector_egui::prelude::*;
 
 #[derive(Default)]

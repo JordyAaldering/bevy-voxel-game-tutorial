@@ -14,9 +14,9 @@ use bevy::{
 #[allow(unused_imports)]
 use bevy_inspector_egui::{egui, bevy_egui::{EguiContexts, EguiPrimaryContextPass}};
 
-#[cfg(since07)]
+#[cfg(all(since07, until14))]
 pub const ATLAS_COLUMNS: u32 = 9;
-#[cfg(since07)]
+#[cfg(all(since07, until14))]
 pub const ATLAS_ROWS: u32 = 10;
 
 #[cfg(since10)]
@@ -42,7 +42,7 @@ pub struct VoxelWorld {
 #[derive(Component)]
 pub struct MeshTask(pub Task<Mesh>);
 
-#[cfg(since07)]
+#[cfg(all(since07, until14))]
 #[derive(Resource)]
 pub struct VoxelAtlas(pub TextureAtlasLayout);
 
@@ -56,9 +56,6 @@ impl Plugin for VoxelWorldPlugin {
 
         #[cfg(only05)]
         app.add_systems(EguiPrimaryContextPass, chunk_debug_ui);
-
-        #[cfg(since07)]
-        app.add_systems(PreStartup, setup_chunk_atlas);
 
         #[cfg(since08)]
         app.add_systems(PostUpdate, (
@@ -375,7 +372,7 @@ fn setup_chunk_material(
     commands.insert_resource(ChunkMaterial(material));
 }
 
-#[cfg(since06)]
+#[cfg(all(since06, until14))]
 fn setup_chunk_material(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -391,12 +388,8 @@ fn setup_chunk_material(
     });
 
     commands.insert_resource(ChunkMaterial(material));
-}
 
-#[cfg(since07)]
-fn setup_chunk_atlas(
-    mut commands: Commands,
-) {
+    #[cfg(since07)]
     commands.insert_resource(VoxelAtlas(TextureAtlasLayout::from_grid(
         UVec2::splat(ATLAS_COLUMNS * ATLAS_ROWS),
         ATLAS_COLUMNS,
@@ -406,13 +399,35 @@ fn setup_chunk_atlas(
     )));
 }
 
+#[cfg(since15)]
+fn setup_chunk_material(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let (atlas, image) = build_voxel_atlas(&mut images)
+        .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
+    let texture = images.add(image);
+    commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
+
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(texture),
+        perceptual_roughness: 0.9,
+        reflectance: 0.1,
+        ..default()
+    });
+
+    commands.insert_resource(ChunkMaterial(material));
+}
+
 /// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
 /// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
 #[cfg(since08)]
 fn remesh_chunks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
-    atlas: Res<VoxelAtlas>,
+    #[cfg(until14)] atlas: Res<VoxelAtlas>,
+    #[cfg(since15)] atlas: Res<SharedVoxelAtlas>,
     chunks: Query<(Entity, &Chunk), (With<NeedsRemesh>, Without<MeshTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();
@@ -424,9 +439,19 @@ fn remesh_chunks(
 
         // The task cannot borrow the world, so it gets shared handles to the data it needs
         let data = Arc::clone(data);
-        let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
-        let atlas: TextureAtlasLayout = atlas.0.clone();
-        let task = pool.spawn(async move { data.build_mesh(&neighbors, &atlas) });
+        let coord = chunk.coord();
+        let neighbors = ChunkNeighbors::from(coord, &world.chunks);
+        #[cfg(until14)]
+        let atlas = atlas.0.clone();
+        #[cfg(since15)]
+        let atlas = Arc::clone(&atlas.0);
+        let task = pool.spawn(async move {
+            #[cfg(until14)]
+            let mesh = data.build_mesh(&neighbors, &atlas);
+            #[cfg(since15)]
+            let mesh = data.build_mesh(&neighbors, coord, &atlas);
+            mesh
+        });
 
         commands.entity(entity)
             .remove::<NeedsRemesh>()
@@ -623,7 +648,8 @@ fn start_chunk_generation_tasks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
     config: Res<TerrainConfig>,
-    atlas: Res<VoxelAtlas>,
+    #[cfg(until14)] atlas: Res<VoxelAtlas>,
+    #[cfg(since15)] atlas: Res<SharedVoxelAtlas>,
     chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();
@@ -651,11 +677,19 @@ fn start_chunk_generation_tasks(
                 }
 
                 let data = Arc::clone(data);
-                let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
+                let coord = chunk.coord();
+                let neighbors = ChunkNeighbors::from(coord, &world.chunks);
+                #[cfg(until14)]
                 let atlas = atlas.0.clone();
-                trace!("Generating mesh for chunk {}", chunk.coord());
+                #[cfg(since15)]
+                let atlas = Arc::clone(&atlas.0);
+                trace!("Generating mesh for chunk {}", coord);
                 pool.spawn(async move {
-                    ChunkGenerationResult::Mesh(data.build_mesh(&neighbors, &atlas))
+                    #[cfg(until14)]
+                    let mesh = ChunkGenerationResult::Mesh(data.build_mesh(&neighbors, &atlas));
+                    #[cfg(since15)]
+                    let mesh = ChunkGenerationResult::Mesh(data.build_mesh(&neighbors, coord, &atlas));
+                    mesh
                 })
             }
         };

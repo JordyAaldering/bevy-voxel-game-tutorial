@@ -112,7 +112,6 @@ fn main() -> AppExit {
             PhysicsPlugin::new(is_gamemode_survival),
             VoxelWorldPlugin::default(),
         ))
-        .init_resource::<VoxelWorld>()
         .init_resource::<TerrainConfig>()
         .add_systems(Startup, (
             global_illumination.spawn(),

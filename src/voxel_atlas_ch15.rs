@@ -1,6 +1,6 @@
-use crate::{coords::Direction, VoxelType};
+use crate::*;
 
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path, sync::Arc};
 
 use better_default::Default;
 use bevy::{
@@ -29,6 +29,9 @@ impl VoxelSpec {
         }
     }
 }
+
+#[derive(Resource)]
+pub struct SharedVoxelAtlas(pub Arc<VoxelAtlas>);
 
 #[derive(Resource)]
 pub struct VoxelAtlas {
@@ -83,7 +86,7 @@ impl FaceSpec {
 
 /// Builds the atlas from the images in `assets/voxels`, as described by `voxels.json`.
 pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Image), String> {
-    let json_path = Path::new(VOXELS_DIR).join("voxels.json");
+    let json_path = Path::new(VOXELS_DIR).join("voxels_ch15.json");
     let json = fs::read_to_string(&json_path).map_err(|e| format!("{}: {e}", json_path.display()))?;
     let specs: HashMap<VoxelType, VoxelSpec> = serde_json::from_str(&json)
         .map_err(|e| format!("{}: {e}", json_path.display()))?;

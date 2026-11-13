@@ -14,21 +14,21 @@ mod telemetry;
 mod voxel_world;
 
 use crate::{
-    chunk::{Chunk, ChunkData, ChunkDataChanged, ChunkGenerationTask, ChunkGenerationPhase, ChunkGenerationResult, NeedsDespawn, NeedsRemesh, NeedsGenerationCheck},
-    chunk_neighbors::ChunkNeighbors,
-    coords::{ChunkCoord, Direction, VoxelCoord, WorldCoord},
-    debug_gizmos::DebugGizmosPlugin,
-    editor::{EditorPlugin, EditorState},
-    gamemode::{GameModePlugin, is_gamemode_spectator, is_gamemode_survival},
-    meshdata::MeshData,
-    noise::NoiseSettings,
-    physics::PhysicsPlugin,
-    player::{Player, PlayerCamera, PlayerPlugin},
-    raycast::VoxelHit,
-    screenshot::ScreenshotPlugin,
-    telemetry::TelemetryPlugin,
-    voxel::VoxelType,
-    voxel_world::{VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
+    chunk::*,
+    chunk_neighbors::*,
+    coords::*,
+    debug_gizmos::*,
+    editor::*,
+    gamemode::*,
+    meshdata::*,
+    noise::*,
+    physics::*,
+    player::*,
+    raycast::*,
+    screenshot::*,
+    telemetry::*,
+    voxel::*,
+    voxel_world::*,
 };
 
 use std::{fs, io, path::{Path, PathBuf}};
@@ -174,7 +174,6 @@ fn main() -> AppExit {
             PhysicsPlugin::new(is_gamemode_survival),
             VoxelWorldPlugin::default(),
         ))
-        .init_resource::<VoxelWorld>()
         .init_resource::<TerrainConfig>()
         .add_systems(Startup, (
             global_illumination.spawn(),

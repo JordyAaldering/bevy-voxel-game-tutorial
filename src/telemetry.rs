@@ -1,5 +1,5 @@
-#[cfg(since20)]
-use crate::{ChunkGenerationPhase, ChunkGenerationTask, VoxelWorld};
+#[allow(unused_imports)]
+use crate::*;
 
 use std::{net::SocketAddr, time::Duration};
 
