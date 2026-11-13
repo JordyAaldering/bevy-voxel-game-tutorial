@@ -1,4 +1,4 @@
-use crate::{Direction, VoxelWorld, WorldCoord};
+use crate::{Direction, WorldCoord};
 
 use bevy::math::{Dir3, Vec3};
 
@@ -12,7 +12,7 @@ pub struct VoxelHit {
 }
 
 pub fn find_voxel(
-    world: &VoxelWorld,
+    is_solid: impl Fn (WorldCoord) -> bool,
     origin: Vec3,
     look: Dir3,
     max_distance: f32,
@@ -96,7 +96,7 @@ pub fn find_voxel(
         }
 
         let coord = WorldCoord::new(x, y, z);
-        if world.is_solid(coord) {
+        if is_solid(coord) {
             return Some(VoxelHit {
                 coord,
                 direction: face,

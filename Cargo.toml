@@ -6,7 +6,11 @@ default-run = "main"
 
 [[bin]]
 name = "main"
-path = "src/chapter21.rs"
+path = "src/chapter20.rs"
+
+#[[bin]]
+#name = "structure_editor"
+#path = "src/structure_editor.rs"
 
 [[bin]]
 name = "noise_viewer"
@@ -19,8 +23,8 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-async-compat = "0.2.6"
 async-channel = "2.5.0"
+async-compat = "0.2.6"
 axum = { version = "0.8.9", features = ["ws"] }
 better_default = "1.0.5"
 bevy = { version = "0.20.1", features = ["dynamic_linking", "pan_orbit_camera"] }
@@ -29,6 +33,7 @@ egui_dock = "0.21.1"
 gif = "0.14.2"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 log = { version = "0.4.35", features = ["max_level_debug", "release_max_level_warn"] }
+rfd = "0.18.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }

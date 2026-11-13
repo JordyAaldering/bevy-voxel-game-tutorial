@@ -1662,7 +1662,7 @@ fn draw_selected_voxel(
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
     let Some(hit) = raycast::find_voxel(
-        &world,
+        |pos| world.is_solid(pos),
         camera.translation(),
         camera.forward(),
         INTERACTION_DISTANCE,
@@ -1695,7 +1695,12 @@ fn break_place_block(
     let origin = camera.translation();
     let look = camera.forward();
 
-    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(&world, origin, look, INTERACTION_DISTANCE) {
+    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(
+        |pos| world.is_solid(pos),
+        origin,
+        look,
+        INTERACTION_DISTANCE,
+    ) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
             world.set_voxel(&mut commands, coord, VoxelType::AIR);
