@@ -19,11 +19,16 @@ pub struct VoxelWorld {
     chunks: HashMap<ChunkCoord, ChunkData>,
 }
 
+#[derive(Resource)]
+pub struct ChunkMaterial(pub Handle<StandardMaterial>);
+
 impl Plugin for VoxelWorldPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(feature = "chapter05")]
         app.add_systems(EguiPrimaryContextPass, chunk_debug_ui);
-        app.init_resource::<VoxelWorld>();
+
+        app.init_resource::<VoxelWorld>()
+            .add_systems(PreStartup, setup_chunk_material);
     }
 }
 
@@ -40,6 +45,17 @@ impl VoxelWorld {
     pub fn iter(&self) -> impl Iterator<Item = (&ChunkCoord, &ChunkData)> {
         self.chunks.iter()
     }
+}
+
+fn setup_chunk_material(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let material = materials.add(
+        Color::linear_rgb(0.2, 0.7, 0.3)
+    );
+
+    commands.insert_resource(ChunkMaterial(material));
 }
 
 #[cfg(feature = "chapter05")]

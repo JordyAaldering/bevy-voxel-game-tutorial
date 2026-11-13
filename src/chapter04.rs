@@ -90,7 +90,8 @@ fn generate_chunk(coord: ChunkCoord) -> ChunkData {
     let mut chunk = ChunkData::new(coord);
 
     for z in 0..CHUNK_WIDTH {
-        for y in 0..(CHUNK_HEIGHT / 2) {
+        let max_y = CHUNK_HEIGHT / 2;
+        for y in 0..=max_y {
             for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = VoxelType::Grass;

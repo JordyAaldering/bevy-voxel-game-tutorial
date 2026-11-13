@@ -8,13 +8,13 @@ mod voxel_world;
 
 use crate::{
     chunk::ChunkData,
-    coords::{Direction, VoxelCoord, ChunkCoord},
+    coords::{ChunkCoord, Direction, VoxelCoord},
     debug_gizmos::DebugGizmosPlugin,
     meshdata::MeshData,
     player::PlayerPlugin,
     screenshot::ScreenshotPlugin,
     voxel::VoxelType,
-    voxel_world::{VoxelWorld, VoxelWorldPlugin},
+    voxel_world::{ChunkMaterial, VoxelWorld, VoxelWorldPlugin},
 };
 
 use bevy::{
@@ -81,14 +81,10 @@ fn global_illumination() -> impl Scene {
 
 fn spawn_world(
     mut commands: Commands,
+    chunk_material: Res<ChunkMaterial>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut world: ResMut<VoxelWorld>,
 ) {
-    let material = materials.add(
-        Color::linear_rgb(0.2, 0.7, 0.3)
-    );
-
     for z in -1..=1 {
         for x in -1..=1 {
             let coord = ChunkCoord::new(x, z);
@@ -102,7 +98,7 @@ fn spawn_world(
             Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
             Mesh3d(meshes.add(build_mesh(chunk, coord, &world))),
-            MeshMaterial3d(material.clone()),
+            MeshMaterial3d(chunk_material.0.clone()),
         ));
     }
 }
