@@ -72,17 +72,6 @@ struct TextureAtlasCoord {
 }
 
 impl TextureAtlas {
-    #[cfg(false)]
-    fn uvs(&self, _: TextureAtlasCoord) -> [Vec2; 4] {
-        [
-            vec2(0.0, 1.0),
-            vec2(1.0, 1.0),
-            vec2(0.0, 0.0),
-            vec2(1.0, 0.0),
-        ]
-    }
-
-    #[cfg(true)]
     fn uvs(&self, tile: TextureAtlasCoord) -> [Vec2; 4] {
         let tile_width = 1.0 / self.width as f32;
         let tile_height = 1.0 / self.height as f32;

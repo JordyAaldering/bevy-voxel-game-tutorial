@@ -1,6 +1,7 @@
 mod chunk;
 mod coords;
 mod debug_gizmos;
+mod gamemode;
 mod meshdata;
 mod physics;
 mod player;
@@ -11,6 +12,7 @@ use crate::{
     chunk::ChunkData,
     coords::{ChunkCoord, Direction, VoxelCoord, WorldCoord},
     debug_gizmos::DebugGizmosPlugin,
+    gamemode::{GameModePlugin, is_gamemode_spectator, is_gamemode_survival},
     meshdata::MeshData,
     physics::PhysicsPlugin,
     player::{Player, PlayerPlugin},
@@ -19,7 +21,6 @@ use crate::{
     voxel_world::{ChunkAtlas, ChunkMaterial, VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
 };
 
-use better_default::Default;
 use bevy::{
     prelude::*,
     math::CompassQuadrant,
@@ -32,13 +33,6 @@ use bevy_inspector_egui::{
 
 pub const CHUNK_WIDTH: usize = 3;
 pub const CHUNK_HEIGHT: usize = 4;
-
-#[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
-enum GameMode {
-    #[default]
-    Survival,
-    Spectator,
-}
 
 mod voxel {
     use crate::{Direction, ATLAS_COLUMNS};
@@ -88,31 +82,20 @@ fn main() -> AppExit {
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
             DebugGizmosPlugin::default(),
+            GameModePlugin::default(),
             PlayerPlugin::default(),
             PhysicsPlugin::new(is_gamemode_survival),
             VoxelWorldPlugin::default(),
         ))
-        .init_resource::<GameMode>()
         .add_systems(Startup, (
             global_illumination.spawn(),
             spawn_world,
-        ))
-        .add_systems(Update, (
-            toggle_gamemode.run_if(is_focused),
         ))
         .run()
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
-    *mode == GameMode::Survival
-}
-
-fn is_gamemode_spectator(mode: Res<GameMode>) -> bool {
-    *mode == GameMode::Spectator
 }
 
 fn global_illumination() -> impl Scene {
@@ -229,19 +212,4 @@ fn is_face_visible(
 
     neighbor_chunk[neighbor_pos]
         .is_transparent()
-}
-
-fn toggle_gamemode(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut player: Single<&mut Player>,
-    mut mode: ResMut<GameMode>,
-) {
-    if keyboard.just_pressed(KeyCode::KeyF) {
-        *mode = match *mode {
-            GameMode::Survival => GameMode::Spectator,
-            GameMode::Spectator => GameMode::Survival,
-        };
-        // Don't retain old vertical momentum
-        player.velocity = Vec3::ZERO;
-    }
 }
