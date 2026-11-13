@@ -18,7 +18,7 @@ use crate::{
     player::{Player, PlayerPlugin},
     screenshot::ScreenshotPlugin,
     voxel::VoxelType,
-    voxel_world::{ChunkAtlas, ChunkMaterial, VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
+    voxel_world::{ChunkMaterial, VoxelAtlas, VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
 };
 
 use bevy::{
@@ -113,9 +113,8 @@ fn global_illumination() -> impl Scene {
 
 fn spawn_world(
     mut commands: Commands,
-    chunk_atlas: Res<ChunkAtlas>,
+    voxel_atlas: Res<VoxelAtlas>,
     chunk_material: Res<ChunkMaterial>,
-    layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut world: ResMut<VoxelWorld>,
 ) {
@@ -127,13 +126,11 @@ fn spawn_world(
         }
     }
 
-    let atlas = layouts.get(&chunk_atlas.0).unwrap();
-
     for (&coord, chunk) in world.iter() {
         commands.spawn((
             Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
-            Mesh3d(meshes.add(build_mesh(&world, chunk, coord, atlas))),
+            Mesh3d(meshes.add(build_mesh(&world, chunk, coord, &voxel_atlas.0))),
             MeshMaterial3d(chunk_material.0.clone()),
         ));
     }
@@ -165,7 +162,7 @@ fn build_mesh(
     chunk_pos: ChunkCoord,
     atlas: &TextureAtlasLayout,
 ) -> Mesh {
-    let mut mesh_data = MeshData::new(atlas);
+    let mut mesh = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
         .filter(|(_, v)| !matches!(v, VoxelType::Air))
@@ -174,12 +171,12 @@ fn build_mesh(
             if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
                 let texture = voxel.texture(direction);
-                mesh_data.add_quad(direction, origin, texture);
+                mesh.add_quad(direction, origin, texture);
             }
         }
     }
 
-    mesh_data.build()
+    mesh.build()
 }
 
 fn is_face_visible(

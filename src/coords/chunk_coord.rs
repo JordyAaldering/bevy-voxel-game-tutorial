@@ -17,12 +17,13 @@ impl ChunkCoord {
         Self { x, z }
     }
 
-    // pub const fn from_position(x: f32, z: f32) -> Self {
-    //     Self {
-    //         x: (x.floor() as i32).div_euclid(CHUNK_WIDTH as i32),
-    //         z: (z.floor() as i32).div_euclid(CHUNK_WIDTH as i32),
-    //     }
-    // }
+    #[cfg(since10)]
+    pub const fn from_position(x: f32, z: f32) -> Self {
+        Self {
+            x: (x.floor() as i32).div_euclid(CHUNK_WIDTH as i32),
+            z: (z.floor() as i32).div_euclid(CHUNK_WIDTH as i32),
+        }
+    }
 
     /// Returns the position of this chunk in world space.
     pub const fn position(self) -> Vec3 {

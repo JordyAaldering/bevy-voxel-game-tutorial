@@ -34,13 +34,7 @@ use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, sync::Arc};
 
 use better_default::Default;
 use bevy::{
-    prelude::*,
-    app::OnAppExitSystems,
-    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
-    input::mouse::AccumulatedMouseMotion,
-    platform::collections::HashMap,
-    tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+    app::OnAppExitSystems, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, math::CompassQuadrant, platform::collections::HashMap, prelude::*, tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future}, window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
     prelude::*,
@@ -747,14 +741,14 @@ impl VoxelWorld {
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            self.notify_chunk(commands, chunk_pos + Compass::Left);
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::West);
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            self.notify_chunk(commands, chunk_pos + Compass::Right);
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::East);
         }
         if voxel_pos.z == 0 {
-            self.notify_chunk(commands, chunk_pos + Compass::Back);
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::South);
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            self.notify_chunk(commands, chunk_pos + Compass::Front);
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::North);
         }
         if voxel_pos.x == 0 && voxel_pos.z == 0 {
             self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z - 1));
@@ -1256,7 +1250,7 @@ fn is_face_visible(
     }
 
     // Chunks only exist horizontally, always show the top-most but never the bottom-most faces
-    let Ok(compass) = TryInto::<Compass>::try_into(direction) else {
+    let Ok(compass): Result<CompassQuadrant, _> = TryInto::try_into(direction) else {
         return direction == Direction::Top;
     };
 
@@ -1264,10 +1258,10 @@ fn is_face_visible(
         .expect("Mesh generation requires all neighboring chunk data");
 
     let neighbor_pos = match compass {
-        Compass::Front => VoxelCoord { z: 0, ..voxel_pos },
-        Compass::Right => VoxelCoord { x: 0, ..voxel_pos },
-        Compass::Back => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
-        Compass::Left => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
+        CompassQuadrant::East => VoxelCoord { x: 0, ..voxel_pos },
+        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        CompassQuadrant::West => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
     };
 
     neighbor_chunk[neighbor_pos]
@@ -1705,7 +1699,7 @@ fn break_place_block(
         if do_break {
             world.set_voxel(&mut commands, coord, VoxelType::AIR);
         } else /* if do_place */ {
-            let neighbor = coord.shift(direction);
+            let neighbor = coord + direction;
             if world.get_voxel(neighbor).is_some() {
                 let voxel_type: VoxelType = hotbar.selected().into();
                 if voxel_type == VoxelType::AIR {

@@ -168,7 +168,7 @@ fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
 
 #[cfg(since10)]
 fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
-    world.get_voxel(pos).is_none_or(VoxelType::is_block)
+    world.get_voxel(pos).is_none_or(|v| v.is_block())
 }
 
 #[cfg(since10)]

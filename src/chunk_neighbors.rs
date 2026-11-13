@@ -1,8 +1,11 @@
-use crate::{ChunkData, ChunkCoord, Compass};
+use crate::{ChunkCoord, ChunkData};
 
 use std::{ops::Index, sync::Arc};
 
-use bevy::{math::CompassOctant, platform::collections::HashMap};
+use bevy::{
+    math::{CompassOctant, CompassQuadrant},
+    platform::collections::HashMap,
+};
 
 pub struct ChunkNeighbors {
     pub north: Option<Arc<ChunkData>>,
@@ -18,27 +21,27 @@ pub struct ChunkNeighbors {
 impl ChunkNeighbors {
     pub fn from(pos: ChunkCoord, chunks: &HashMap<ChunkCoord, Arc<ChunkData>>) -> Self {
         Self {
-            north: chunks.get(&ChunkCoord::new(pos.x, pos.z + 1)).cloned(),
+            north:      chunks.get(&ChunkCoord::new(pos.x    , pos.z + 1)).cloned(),
             north_east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z + 1)).cloned(),
-            east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z)).cloned(),
+            east:       chunks.get(&ChunkCoord::new(pos.x + 1, pos.z    )).cloned(),
             south_east: chunks.get(&ChunkCoord::new(pos.x + 1, pos.z - 1)).cloned(),
-            south: chunks.get(&ChunkCoord::new(pos.x, pos.z - 1)).cloned(),
+            south:      chunks.get(&ChunkCoord::new(pos.x    , pos.z - 1)).cloned(),
             south_west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z - 1)).cloned(),
-            west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z)).cloned(),
+            west:       chunks.get(&ChunkCoord::new(pos.x - 1, pos.z    )).cloned(),
             north_west: chunks.get(&ChunkCoord::new(pos.x - 1, pos.z + 1)).cloned(),
         }
     }
 }
 
-impl Index<Compass> for ChunkNeighbors {
+impl Index<CompassQuadrant> for ChunkNeighbors {
     type Output = Option<Arc<ChunkData>>;
 
-    fn index(&self, index: Compass) -> &Self::Output {
+    fn index(&self, index: CompassQuadrant) -> &Self::Output {
         match index {
-            Compass::Front => &self.north,
-            Compass::Right => &self.east,
-            Compass::Back => &self.south,
-            Compass::Left => &self.west,
+            CompassQuadrant::North => &self.north,
+            CompassQuadrant::East  => &self.east,
+            CompassQuadrant::South => &self.south,
+            CompassQuadrant::West  => &self.west,
         }
     }
 }
@@ -48,13 +51,13 @@ impl Index<CompassOctant> for ChunkNeighbors {
 
     fn index(&self, index: CompassOctant) -> &Self::Output {
         match index {
-            CompassOctant::North => &self.north,
+            CompassOctant::North     => &self.north,
             CompassOctant::NorthEast => &self.north_east,
-            CompassOctant::East => &self.east,
+            CompassOctant::East      => &self.east,
             CompassOctant::SouthEast => &self.south_east,
-            CompassOctant::South => &self.south,
+            CompassOctant::South     => &self.south,
             CompassOctant::SouthWest => &self.south_west,
-            CompassOctant::West => &self.west,
+            CompassOctant::West      => &self.west,
             CompassOctant::NorthWest => &self.north_west,
         }
     }

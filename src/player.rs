@@ -1,6 +1,8 @@
 use crate::is_focused;
 #[cfg(since07)]
 use crate::{is_gamemode_spectator, is_gamemode_survival};
+#[cfg(since08)]
+use crate::{VoxelWorld, meshdata, raycast::{self, VoxelHit}, VoxelType};
 
 #[cfg(since02)]
 use better_default::Default;
@@ -24,9 +26,12 @@ const MOVE_SPEED: f32 = 5.0;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 #[cfg(since07)]
-const PLAYER_EYE_HEIGHT: f32 = 1.6;
-#[cfg(since07)]
 const MAX_PITCH: f32 = 1.4;
+#[cfg(since07)]
+const PLAYER_EYE_HEIGHT: f32 = 1.6;
+
+#[cfg(since08)]
+const INTERACTION_DISTANCE: f32 = 5.0;
 
 #[derive(Default)]
 pub struct PlayerPlugin;
@@ -56,12 +61,13 @@ pub struct Player {
 
 #[cfg(since07)]
 #[derive(Clone, Copy, Default, Component)]
-struct PlayerCamera;
+pub struct PlayerCamera;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(since02)]
         app.init_resource::<CameraSettings>().register_type::<CameraSettings>();
+
         #[cfg(only02)]
         app.add_plugins(ResourceInspectorPlugin::<CameraSettings>::default());
 
@@ -76,9 +82,51 @@ impl Plugin for PlayerPlugin {
                     move_spectator.run_if(is_gamemode_spectator),
                     #[cfg(since07)]
                     move_survival.run_if(is_gamemode_survival),
-                )
-                .run_if(is_focused),
+                    #[cfg(since08)]
+                    break_place_block,
+                ).run_if(is_focused),
+                #[cfg(since08)]
+                draw_selected_voxel,
             ));
+    }
+}
+
+#[cfg(until01)]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    // Release the cursor when escape is pressed
+    if keyboard.just_pressed(KeyCode::Escape) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+    // Recapture when a click occurs
+    if mouse.just_pressed(MouseButton::Left) {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
+    }
+}
+
+#[cfg(since02)]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    egui_wants_input: Res<EguiWantsInput>,
+) {
+    // Release the cursor when escape is pressed
+    if keyboard.just_pressed(KeyCode::Escape) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+    // Recapture when a click occurs outside egui
+    if mouse.just_pressed(MouseButton::Left)
+        && !egui_wants_input.wants_pointer_input()
+    {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
     }
 }
 
@@ -236,43 +284,58 @@ fn move_survival(
     }
 }
 
-#[cfg(not(since02))]
-fn toggle_cursor(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+#[cfg(since08)]
+fn draw_selected_voxel(
+    mut gizmos: Gizmos,
+    world: Res<VoxelWorld>,
+    camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape) {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
-    }
+    let Some(VoxelHit { coord, direction }) = raycast::find_voxel(
+        |pos| world.is_solid(pos),
+        camera.translation(),
+        camera.forward(),
+        INTERACTION_DISTANCE,
+    ) else {
+        return;
+    };
 
-    // Recapture when a click occurs
-    if mouse.just_pressed(MouseButton::Left) {
-        cursor.grab_mode = CursorGrabMode::Locked;
-        cursor.visible = false;
-    }
+    let origin = coord.position();
+    let vertices = meshdata::quad_vertices(direction, origin);
+
+    gizmos.line(vertices[0], vertices[1], Color::WHITE);
+    gizmos.line(vertices[1], vertices[3], Color::WHITE);
+    gizmos.line(vertices[3], vertices[2], Color::WHITE);
+    gizmos.line(vertices[2], vertices[0], Color::WHITE);
 }
 
-#[cfg(since02)]
-fn toggle_cursor(
-    keyboard: Res<ButtonInput<KeyCode>>,
+#[cfg(since08)]
+fn break_place_block(
+    mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-    egui_wants_input: Res<EguiWantsInput>,
+    mut world: ResMut<VoxelWorld>,
+    camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape) {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
+    let do_break = mouse.just_pressed(MouseButton::Left);
+    let do_place = mouse.just_pressed(MouseButton::Right);
+    if !(do_break || do_place) {
+        return;
     }
 
-    // Recapture when a click occurs outside egui
-    if mouse.just_pressed(MouseButton::Left)
-        && !egui_wants_input.wants_pointer_input()
-    {
-        cursor.grab_mode = CursorGrabMode::Locked;
-        cursor.visible = false;
+    let origin = camera.translation();
+    let look = camera.forward();
+
+    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(
+        |pos| world.is_solid(pos),
+        origin,
+        look,
+        INTERACTION_DISTANCE,
+    ) {
+        info!("Hit {:?} at {:?}", coord, direction);
+        if do_break {
+            world.set_voxel(&mut commands, coord, VoxelType::Air);
+        } else /* if do_place */ {
+            let neighbor = coord + direction;
+            world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
+        }
     }
 }
