@@ -5,6 +5,8 @@ use crate::{VoxelType, WorldCoord};
 use crate::{Chunk, ChunkNeighbors, NeedsRemesh, CHUNK_WIDTH};
 #[cfg(since10)]
 use crate::{NeedsDespawn, Player};
+#[cfg(since13)]
+use crate::{ChunkDataChanged, ChunkGenerationPhase};
 
 #[cfg(since08)]
 use std::sync::Arc;
@@ -103,6 +105,7 @@ impl VoxelWorld {
 
 #[cfg(since07)]
 impl VoxelWorld {
+    #[cfg(until12)]
     pub fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
         if !pos.in_bounds() {
             return None;
@@ -113,6 +116,21 @@ impl VoxelWorld {
             let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
+    }
+
+    #[cfg(since12)]
+    pub fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
+        if !pos.in_bounds() {
+            return None;
+        }
+
+        let chunk_pos = pos.chunk_coord();
+        self.get_chunk(chunk_pos)
+            .filter(|chunk| chunk.generation_phase > ChunkGenerationPhase::HeightGeneration)
+            .map(|chunk| {
+                let voxel_pos = pos.local_coord();
+                chunk[voxel_pos]
+            })
     }
 
     pub fn is_solid(&self, pos: WorldCoord) -> bool {
@@ -129,6 +147,7 @@ impl VoxelWorld {
 
     /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
     /// if it does not exist yet, so earlier modifications survive unloading.
+    #[cfg(until12)]
     pub fn spawn_chunk(
         &mut self,
         commands: &mut Commands,
@@ -167,6 +186,7 @@ impl VoxelWorld {
         entity
     }
 
+    #[cfg(until12)]
     pub fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
@@ -206,10 +226,79 @@ impl VoxelWorld {
         }
     }
 
-    // fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
-    //     let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-    //     self.chunks.get(&neighbor_pos).map(|chunk| &**chunk)
-    // }
+    #[cfg(since13)]
+    pub fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
+        let voxel_pos = pos.local_coord();
+        let chunk_pos = pos.chunk_coord();
+        let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
+        Arc::make_mut(chunk)[voxel_pos] = voxel;
+
+        self.notify_chunk(commands, chunk_pos);
+
+        // Voxels on a chunk border influence the faces of the adjacent chunk
+        if voxel_pos.x == 0 {
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::West);
+        } else if voxel_pos.x == CHUNK_WIDTH - 1 {
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::East);
+        }
+        if voxel_pos.z == 0 {
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::South);
+        } else if voxel_pos.z == CHUNK_WIDTH - 1 {
+            self.notify_chunk(commands, chunk_pos + CompassQuadrant::West);
+        }
+    }
+}
+
+#[cfg(since13)]
+impl VoxelWorld {
+    pub fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
+        let entity = commands.spawn((
+            Name::new(format!("Chunk {coord}")),
+            Transform::from_translation(coord.position()),
+            Chunk::new(coord),
+        )).id();
+
+        if let Some(chunk) = self.chunks.get_mut(&coord) {
+            Arc::make_mut(chunk).set_entity(entity);
+        } else {
+            let chunk = ChunkData::new(coord, entity);
+            self.add_chunk(coord, Arc::new(chunk));
+        }
+
+        commands.trigger(ChunkDataChanged { entity });
+
+        entity
+    }
+
+    pub fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
+        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
+        self.chunks.get(&neighbor_pos).map(Arc::as_ref)
+    }
+
+    /// Whether all neighbors required by `phase` have completed the phase before it.
+    pub fn neighbors_ready_for(&self, coord: ChunkCoord, phase: ChunkGenerationPhase) -> bool {
+        phase.neighbor_requirement()
+            .offsets()
+            .all(|(dx, dz)| {
+                self.get_chunk_neighbor(coord, dx, dz)
+                    .is_some_and(|neighbor| neighbor.generation_phase >= phase)
+            })
+    }
+
+    /// Notifies the chunk at `coord` that its, or its neighbors' voxel data has changed.
+    /// This triggers the chunk to advance to the next generation phase, if applicable.
+    pub fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
+        if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity()) {
+            info!("Notifying chunk {} of voxel data change", coord);
+            commands.trigger(ChunkDataChanged { entity });
+        }
+    }
+
+    pub fn notify_neighbors(&self, commands: &mut Commands, coord: ChunkCoord) {
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
+        }
+    }
 }
 
 #[cfg(since10)]
@@ -350,7 +439,7 @@ fn spawn_chunks_around_player(
     mut world: ResMut<VoxelWorld>,
     material: Res<ChunkMaterial>,
     player: Single<&Transform, With<Player>>,
-    config: Res<crate::TerrainConfig>,
+    #[cfg(until12)] config: Res<crate::TerrainConfig>,
 ) {
     let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
 
@@ -362,8 +451,11 @@ fn spawn_chunks_around_player(
                 continue;
             }
 
+            #[cfg(until12)]
             let entity = world.spawn_chunk(&mut commands, coord,
                 |chunk| crate::generate_chunk(chunk, &config));
+            #[cfg(since13)]
+            let entity = world.spawn_chunk(&mut commands, coord);
             commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
         }
     }

@@ -1,3 +1,8 @@
+#[cfg(since13)]
+mod phase;
+
+pub use phase::*;
+
 use crate::{
     ChunkCoord,
     Direction,
@@ -39,6 +44,8 @@ pub struct ChunkData {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[cfg(since08)]
     entity: Option<Entity>,
+    #[cfg(since13)]
+    pub generation_phase: ChunkGenerationPhase,
 }
 
 #[cfg(since08)]
@@ -89,6 +96,8 @@ impl ChunkData {
             coord,
             voxels: [VoxelType::Air; _],
             entity: Some(entity),
+            #[cfg(since13)]
+            generation_phase: ChunkGenerationPhase::HeightGeneration,
         }
     }
 
