@@ -1,27 +1,17 @@
-use crate::{ChunkCoord, ChunkData};
-#[cfg(since07)]
-use crate::{VoxelType, WorldCoord};
-#[cfg(since08)]
-use crate::{Chunk, ChunkNeighbors, NeedsRemesh, CHUNK_WIDTH};
-#[cfg(since10)]
-use crate::{NeedsDespawn, Player};
-#[cfg(since13)]
-use crate::{ChunkDataChanged, ChunkGenerationPhase};
+use crate::*;
 
-#[cfg(since08)]
-use std::sync::Arc;
+#[allow(unused_imports)]
+use std::{ops::{Index, IndexMut}, sync::Arc};
 
 use better_default::Default;
+#[allow(unused_imports)]
 use bevy::{
     prelude::*,
-    platform::collections::HashMap,
-};
-#[cfg(since08)]
-use bevy::{
     math::CompassQuadrant,
+    platform::collections::HashMap,
     tasks::{AsyncComputeTaskPool, futures_lite::future, Task, block_on},
 };
-#[cfg(only05)]
+#[allow(unused_imports)]
 use bevy_inspector_egui::{egui, bevy_egui::{EguiContexts, EguiPrimaryContextPass}};
 
 #[cfg(since07)]
@@ -72,18 +62,33 @@ impl Plugin for VoxelWorldPlugin {
 
         #[cfg(since08)]
         app.add_systems(PostUpdate, (
-            poll_mesh_tasks,
-            remesh_chunks,
-        ).chain());
+                poll_mesh_tasks,
+                remesh_chunks,
+            ).chain()
+        );
 
-        #[cfg(since10)]
-        app.add_systems(Update, (
-            spawn_chunks_around_player,
-            retire_distant_chunks,
-            despawn_retired_chunks,
-            poll_mesh_tasks,
-            remesh_chunks,
-        ).chain());
+        #[cfg(all(since10, until12))]
+        app.add_systems(Update,
+            (
+                    spawn_chunks_around_player,
+                    retire_distant_chunks,
+                    despawn_retired_chunks,
+                    poll_mesh_tasks,
+                    remesh_chunks,
+                ).chain()
+            );
+
+        #[cfg(since13)]
+        app.add_systems(Update,
+            (
+                    spawn_chunks_around_player,
+                    retire_distant_chunks,
+                    despawn_retired_chunks,
+                    poll_chunk_generation_tasks,
+                    start_chunk_generation_tasks,
+                ).chain()
+            )
+            .add_observer(on_chunk_data_changed);
     }
 }
 
@@ -118,7 +123,7 @@ impl VoxelWorld {
         })
     }
 
-    #[cfg(since12)]
+    #[cfg(since13)]
     pub fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
         if !pos.in_bounds() {
             return None;
@@ -141,9 +146,11 @@ impl VoxelWorld {
 
 #[cfg(since08)]
 impl VoxelWorld {
+    #[cfg(until12)]
     pub fn get_chunk_mut(&mut self, pos: ChunkCoord) -> Option<&mut TChunkData> {
         self.chunks.get_mut(&pos)
     }
+
 
     /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
     /// if it does not exist yet, so earlier modifications survive unloading.
@@ -249,6 +256,24 @@ impl VoxelWorld {
     }
 }
 
+impl Index<&Chunk> for VoxelWorld {
+    type Output = ChunkData;
+
+    fn index(&self, chunk: &Chunk) -> &Self::Output {
+        self.chunks.get(&chunk.coord())
+            .expect("A chunk entity cannot exist without its data")
+    }
+}
+
+impl IndexMut<&Chunk> for VoxelWorld {
+    fn index_mut(&mut self, chunk: &Chunk) -> &mut Self::Output {
+        Arc::make_mut(
+            self.chunks.get_mut(&chunk.coord())
+                .expect("A chunk entity cannot exist without its data"),
+        )
+    }
+}
+
 #[cfg(since13)]
 impl VoxelWorld {
     pub fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
@@ -261,7 +286,13 @@ impl VoxelWorld {
         if let Some(chunk) = self.chunks.get_mut(&coord) {
             Arc::make_mut(chunk).set_entity(entity);
         } else {
+            #[cfg(until13)]
             let chunk = ChunkData::new(coord, entity);
+
+            #[cfg(since14)]
+            let chunk = ChunkData::load(coord, entity)
+                .unwrap_or_else(|| ChunkData::new(coord, entity));
+
             self.add_chunk(coord, Arc::new(chunk));
         }
 
@@ -492,8 +523,152 @@ fn despawn_retired_chunks(
         // Keep the voxel data; only the entity goes away
         if let Some(data) = world.chunks.get_mut(&chunk.coord()) {
             Arc::make_mut(data).clear_entity();
+
+            #[cfg(since14)]
+            data.save();
         }
 
         commands.entity(entity).despawn();
+    }
+}
+
+#[cfg(since13)]
+fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
+    let heights = config.height.area2(config.seed, chunk.coord().x, chunk.coord().z);
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_WIDTH {
+            let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
+
+            // Top layer is grass
+            chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
+            // Two layers of dirt
+            for y in (height - 2).max(0)..height {
+                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Dirt;
+            }
+            // Below that is stone
+            for y in 0..(height - 2).max(0) {
+                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
+            }
+        }
+    }
+}
+
+#[cfg(since13)]
+fn on_chunk_data_changed(
+    event: On<ChunkDataChanged>,
+    chunks: Query<&Chunk>,
+    world: Res<VoxelWorld>,
+    mut commands: Commands,
+) {
+    // May be None if the chunk was despawned before the event was processed
+    let Ok(chunk) = chunks.get(event.entity) else {
+        return;
+    };
+
+    let chunk = world.get_chunk(chunk.coord()).unwrap();
+
+    // Ignore events for entities that have since been replaced by a reloaded chunk.
+    if chunk.entity() == Some(event.entity) {
+        commands.entity(event.entity).insert(NeedsGenerationCheck);
+    }
+}
+
+#[cfg(since13)]
+fn poll_chunk_generation_tasks(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&Mesh3d>)>,
+) -> Result<(), BevyError> {
+    for (entity, chunk, mut task, mesh3d) in &mut tasks {
+        let Some(result) = block_on(future::poll_once(&mut task.0)) else {
+            continue;
+        };
+
+        match result {
+            ChunkGenerationResult::Height(generated) => {
+                let data = &mut world[&chunk];
+
+                assert_eq!(data.generation_phase, ChunkGenerationPhase::HeightGeneration);
+
+                data.set_voxels(*generated);
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord());
+                world.notify_neighbors(&mut commands, chunk.coord());
+            }
+            ChunkGenerationResult::Mesh(mesh) => {
+                match mesh3d {
+                    Some(handle) => {
+                        meshes.insert(&handle.0, mesh)?;
+                    }
+                    None => {
+                        commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                    }
+                }
+
+                let data = &mut world[&chunk];
+                assert!(data.generation_phase >= ChunkGenerationPhase::MeshGeneration);
+                data.generation_phase = data.generation_phase.next();
+            }
+        }
+
+        commands.entity(entity).remove::<ChunkGenerationTask>();
+    }
+
+    Ok(())
+}
+
+#[cfg(since13)]
+fn start_chunk_generation_tasks(
+    mut commands: Commands,
+    world: Res<VoxelWorld>,
+    config: Res<TerrainConfig>,
+    atlas: Res<VoxelAtlas>,
+    chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
+) {
+    let pool = AsyncComputeTaskPool::get();
+
+    for (entity, chunk) in &chunks {
+        let data = &world.get_chunk(chunk.coord()).unwrap();
+
+        let phase = data.generation_phase;
+        commands.entity(entity).remove::<NeedsGenerationCheck>();
+
+        let task = match phase {
+            ChunkGenerationPhase::HeightGeneration => {
+                let data = Arc::clone(data);
+                let config = config.clone();
+                info!("Generating height data for chunk {}", chunk.coord());
+                pool.spawn(async move {
+                    let mut generated = Box::new((*data).clone());
+                    generate_chunk_height(&mut generated, &config);
+                    ChunkGenerationResult::Height(generated)
+                })
+            }
+            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
+                if !world.neighbors_ready_for(chunk.coord(), ChunkGenerationPhase::MeshGeneration) {
+                    continue;
+                }
+
+                let data = Arc::clone(data);
+                let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
+                let atlas = atlas.0.clone();
+                trace!("Generating mesh for chunk {}", chunk.coord());
+                pool.spawn(async move {
+                    ChunkGenerationResult::Mesh(data.build_mesh(&neighbors, &atlas))
+                })
+            }
+        };
+
+        commands.entity(entity).insert(ChunkGenerationTask(task));
+    }
+}
+
+impl VoxelWorld {
+    #[cfg(since14)]
+    pub fn save(&self) {
+        for chunk in self.chunks.values() {
+            chunk.save();
+        }
     }
 }

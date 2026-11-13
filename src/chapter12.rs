@@ -30,10 +30,7 @@ use crate::{
     voxel_world::{VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
 };
 
-use bevy::{
-    prelude::*,
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
-};
+use bevy::{prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::bevy_egui::prelude::*;
 
 pub const CHUNK_WIDTH: usize = 32;

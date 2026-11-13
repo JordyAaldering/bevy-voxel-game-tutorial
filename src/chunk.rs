@@ -1,18 +1,10 @@
 #[cfg(since13)]
 mod phase;
 
+#[cfg(since13)]
 pub use phase::*;
 
-use crate::{
-    ChunkCoord,
-    Direction,
-    VoxelCoord,
-    VoxelType,
-    CHUNK_WIDTH,
-    CHUNK_HEIGHT,
-};
-#[cfg(since08)]
-use crate::{ChunkNeighbors, MeshData};
+use crate::*;
 
 #[cfg(since08)]
 use bevy::prelude::*;
@@ -38,11 +30,13 @@ pub struct NeedsRemesh;
 pub struct NeedsDespawn;
 
 #[derive(Clone)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 pub struct ChunkData {
     #[allow(unused)]
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[cfg(since08)]
+    #[wincode(skip)]
     entity: Option<Entity>,
     #[cfg(since13)]
     pub generation_phase: ChunkGenerationPhase,
@@ -66,6 +60,10 @@ impl ChunkData {
             coord,
             voxels: [VoxelType::Air; _],
         }
+    }
+
+    pub fn set_voxels(&mut self, other: ChunkData) {
+        self.voxels = other.voxels;
     }
 
     pub fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
@@ -188,5 +186,50 @@ impl std::ops::Index<VoxelCoord> for ChunkData {
 impl std::ops::IndexMut<VoxelCoord> for ChunkData {
     fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
         &mut self.voxels[pos.index()]
+    }
+}
+
+#[cfg(since14)]
+impl ChunkData {
+    fn path(coord: ChunkCoord) -> PathBuf {
+        Path::new(SAVE_DIR).join(format!("chunk_{}_{}.bin", coord.x, coord.z))
+    }
+
+    pub fn save(&self) {
+        let result = wincode::serialize(self)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| write_atomic(&Self::path(self.coord), &bytes).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save chunk {}: {error}", self.coord);
+        }
+    }
+
+    /// Returns `None` if there is no saved chunk, or it could not be read.
+    pub fn load(coord: ChunkCoord, entity: Entity) -> Option<Self> {
+        let bytes = match fs::read(Self::path(coord)) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+            Err(error) => {
+                error!("Failed to read chunk {coord}: {error}");
+                return None;
+            }
+        };
+
+        match wincode::deserialize::<Self>(&bytes) {
+            Ok(mut chunk) if chunk.coord == coord => {
+                chunk.entity = Some(entity);
+                // Meshes are not saved, so a loaded chunk always has to be meshed again
+                chunk.generation_phase = chunk.generation_phase.min(ChunkGenerationPhase::MeshGeneration);
+                Some(chunk)
+            }
+            Ok(_) => {
+                error!("Saved chunk file for {coord} contains a different chunk");
+                None
+            }
+            Err(error) => {
+                error!("Failed to decode chunk {coord}: {error}");
+                None
+            }
+        }
     }
 }

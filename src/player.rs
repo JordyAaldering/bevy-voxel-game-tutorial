@@ -1,27 +1,18 @@
-#[cfg(since07)]
-use crate::is_focused;
-#[cfg(since07)]
-use crate::{is_gamemode_spectator, is_gamemode_survival};
-#[cfg(since08)]
-use crate::{VoxelWorld, meshdata, raycast::{self, VoxelHit}, VoxelType};
-#[cfg(since09)]
-use crate::{TerrainConfig, CHUNK_HEIGHT};
-#[cfg(since12)]
-use crate::game_view_captured;
+use crate::*;
 
-#[cfg(since02)]
+#[allow(unused_imports)]
 use better_default::Default;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-#[cfg(since02)]
-use bevy_inspector_egui::{prelude::*, InspectorOptions};
-#[cfg(all(since02, until11))]
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-#[cfg(only02)]
-use bevy_inspector_egui::quick::ResourceInspectorPlugin;
+#[allow(unused_imports)]
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::input::EguiWantsInput,
+    quick::ResourceInspectorPlugin,
+};
 
 #[cfg(only01)]
 const MOVE_SPEED: f32 = 5.0;
@@ -41,7 +32,9 @@ pub struct PlayerPlugin;
 
 #[cfg(since02)]
 #[derive(Default, Resource, Reflect, InspectorOptions)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[reflect(Resource, InspectorOptions)]
+#[serde(default)]
 struct CameraSettings {
     #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
@@ -69,7 +62,11 @@ pub struct PlayerCamera;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(since02)]
-        app.init_resource::<CameraSettings>().register_type::<CameraSettings>();
+        app.register_type::<CameraSettings>();
+        #[cfg(all(since02, until13))]
+        app.init_resource::<CameraSettings>();
+        #[cfg(since14)]
+        app.insert_resource(CameraSettings::load());
 
         #[cfg(only02)]
         app.add_plugins(ResourceInspectorPlugin::<CameraSettings>::default());
@@ -110,6 +107,11 @@ impl Plugin for PlayerPlugin {
                 #[cfg(since07)]
                 move_survival.run_if(is_gamemode_survival),
             ).run_if(is_focused.and_then(game_view_captured)),
+        ));
+
+        #[cfg(since14)]
+        app.add_systems(Last, (
+            save_on_exit.in_set(OnAppExitSystems),
         ));
     }
 }
@@ -220,14 +222,13 @@ fn player() -> impl Scene {
     }
 }
 
-#[cfg(since09)]
+#[cfg(all(since09, until13))]
 fn spawn_player(
     mut commands: Commands,
     config: Res<TerrainConfig>,
     #[cfg(since12)] editor_state: Res<crate::EditorState>,
 ) {
-    let world_height = config.height.sample2(config.seed, 0.0, 0.0) as usize;
-    let world_height = world_height.clamp(0, CHUNK_HEIGHT - 1);
+    let world_height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
 
     commands.spawn((
             Name::new("Player"),
@@ -238,7 +239,7 @@ fn spawn_player(
             }),
             Msaa::Off,
             InheritedVisibility::default(),
-            Transform::from_xyz(0.5, world_height as f32 + 1.0, 0.5),
+            Transform::from_xyz(0.5, world_height, 0.5),
         ))
         .with_children(|commands| {
             commands.spawn((
@@ -246,6 +247,56 @@ fn spawn_player(
                 Camera3d::default(),
                 Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
                 #[cfg(since12)]
+                editor_state.game_camera_target(),
+            ));
+        });
+}
+
+#[cfg(since14)]
+fn spawn_player(
+    mut commands: Commands,
+    config: Res<TerrainConfig>,
+    editor_state: Res<EditorState>,
+) {
+    let world_height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
+
+    let save = WorldSave::load();
+    let position = save
+        .as_ref()
+        .map(|save| Vec3::from(save.player_position))
+        .unwrap_or(Vec3::new(1.5, world_height, 1.5));
+    let rotation = save
+        .as_ref()
+        .map(|save| Quat::from_array(save.player_rotation))
+        .unwrap_or(Quat::IDENTITY);
+    let camera_rotation = save
+        .as_ref()
+        .map(|save| Quat::from_array(save.camera_rotation))
+        .unwrap_or(Quat::IDENTITY);
+    let velocity = save
+        .map(|save| Vec3::from(save.player_velocity))
+        .unwrap_or(Vec3::ZERO);
+
+    commands.spawn((
+            Name::new("Player"),
+            Player { velocity, ..default() },
+            Projection::Perspective(PerspectiveProjection {
+                fov: 0.9,
+                ..default()
+            }),
+            Msaa::Off,
+            InheritedVisibility::default(),
+            Transform { translation: position, rotation, ..default() },
+        ))
+        .with_children(|commands| {
+            commands.spawn((
+                PlayerCamera,
+                Camera3d::default(),
+                Transform {
+                    translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
+                    rotation: camera_rotation,
+                    ..default()
+                },
                 editor_state.game_camera_target(),
             ));
         });
@@ -421,4 +472,51 @@ fn break_place_block(
             world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
         }
     }
+}
+
+#[cfg(since14)]
+impl CameraSettings {
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
+
+    fn path() -> PathBuf {
+        Path::new(Self::DIR).join("camera.json")
+    }
+
+    fn save(&self) {
+        let result = serde_json::to_string_pretty(self)
+            .map_err(|e| e.to_string())
+            .and_then(|json| write_atomic(&Self::path(), json.as_bytes()).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save camera settings: {error}");
+        }
+    }
+
+    /// Falls back to the defaults if the file is missing or invalid.
+    fn load() -> Self {
+        let json = match fs::read_to_string(Self::path()) {
+            Ok(json) => json,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::default(),
+            Err(error) => {
+                error!("Failed to read camera.json: {error}");
+                return Self::default();
+            }
+        };
+
+        serde_json::from_str(&json).unwrap_or_else(|error| {
+            error!("Failed to parse camera.json: {error}");
+            Self::default()
+        })
+    }
+}
+
+#[cfg(since14)]
+fn save_on_exit(
+    mut exits: MessageReader<AppExit>,
+    settings: Res<CameraSettings>,
+) {
+    if exits.read().next().is_none() {
+        return;
+    }
+
+    settings.save();
 }

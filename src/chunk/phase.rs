@@ -3,6 +3,7 @@ use super::ChunkData;
 use bevy::{prelude::*, tasks::Task};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 pub enum ChunkGenerationPhase {
     HeightGeneration,
     MeshGeneration,
@@ -31,7 +32,7 @@ impl ChunkGenerationPhase {
 
 /// The set of neighboring chunks that must be ready before a generation phase can run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct NeighborRequirement {
+pub struct NeighborRequirement {
     /// How many chunks away to check, 0 meaning only the chunk itself.
     radius: i32,
     /// Whether to also check chunks that are not in the same row or column.
