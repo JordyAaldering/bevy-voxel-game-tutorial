@@ -1,14 +1,15 @@
+#[cfg(since20)]
 use crate::{ChunkGenerationPhase, ChunkGenerationTask, VoxelWorld};
 
 use std::{net::SocketAddr, time::Duration};
 
+use async_compat::Compat;
 use axum::{
     Router,
     extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
     response::{Html, Response},
     routing,
 };
-use async_compat::Compat;
 use bevy::{
     prelude::*,
     tasks::IoTaskPool,
@@ -58,9 +59,12 @@ impl Plugin for TelemetryPlugin {
         app.insert_resource(TelemetryPublisher(sender))
             .init_resource::<ChunkTelemetry>()
             .add_systems(Update,
-                (collect_chunk_telemetry, collect_telemetry)
-                    .chain()
-                    .run_if(on_timer(Duration::from_millis(250)))
+                (
+                    collect_telemetry,
+                    #[cfg(since20)] collect_chunk_telemetry,
+                )
+                .chain()
+                .run_if(on_timer(Duration::from_millis(250)))
             );
     }
 }
@@ -84,6 +88,7 @@ async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .unwrap();
 }
 
+#[cfg(since20)]
 fn collect_chunk_telemetry(
     world: Res<VoxelWorld>,
     tasks: Query<&ChunkGenerationTask>,

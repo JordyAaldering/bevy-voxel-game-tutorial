@@ -161,7 +161,7 @@ fn move_axis(
     }
 }
 
-#[cfg(until10)]
+#[cfg(until19)]
 fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
     world.is_solid(pos)
 }

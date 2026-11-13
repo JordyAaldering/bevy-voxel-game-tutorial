@@ -9,10 +9,6 @@ use crate::{TerrainConfig, CHUNK_HEIGHT};
 
 #[cfg(since02)]
 use better_default::Default;
-#[cfg(since09)]
-use bevy::ecs::system::command;
-#[cfg(since09)]
-use bevy::state::commands;
 use bevy::{
     prelude::*,
     input::mouse::AccumulatedMouseMotion,
