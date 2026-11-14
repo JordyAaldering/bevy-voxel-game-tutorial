@@ -11,7 +11,7 @@ mod player;
 mod raycast;
 mod screenshot;
 mod telemetry;
-mod voxel_atlas_ch15;
+mod voxel_atlas;
 mod voxel_world;
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
     screenshot::*,
     telemetry::*,
     voxel::*,
-    voxel_atlas_ch15::*,
+    voxel_atlas::*,
     voxel_world::*,
 };
 
