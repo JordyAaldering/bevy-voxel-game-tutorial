@@ -1,9 +1,7 @@
 #[cfg(since02)]
-use super::player_settings::CameraSettings;
+use super::CameraSettings;
 #[cfg(since07)]
 use super::{Player, PlayerCamera};
-
-use crate::*;
 
 use bevy::{
     prelude::*,
@@ -36,25 +34,25 @@ pub(super) fn register(app: &mut App) {
         (
             player_look,
             move_spectator,
-        ).run_if(is_focused),
+        ).run_if(crate::is_focused),
     ));
 
     #[cfg(all(since07, until11))]
     app.add_systems(Update, (
         (
             player_look,
-            move_spectator.run_if(is_gamemode_spectator),
-            move_survival.run_if(is_gamemode_survival),
-        ).run_if(is_focused),
+            move_spectator.run_if(crate::is_gamemode_spectator),
+            move_survival.run_if(crate::is_gamemode_survival),
+        ).run_if(crate::is_focused),
     ));
 
     #[cfg(since12)]
     app.add_systems(Update, (
         (
             player_look,
-            move_spectator.run_if(is_gamemode_spectator),
-            move_survival.run_if(is_gamemode_survival),
-        ).run_if(is_focused.and_then(game_view_captured)),
+            move_spectator.run_if(crate::is_gamemode_spectator),
+            move_survival.run_if(crate::is_gamemode_survival),
+        ).run_if(crate::is_focused.and_then(crate::game_view_captured)),
     ));
 }
 
@@ -247,10 +245,10 @@ fn move_survival(
 #[cfg(since08)]
 fn draw_selected_voxel(
     mut gizmos: Gizmos,
-    world: Res<VoxelWorld>,
+    world: Res<crate::VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    let Some(VoxelHit { coord, direction }) = raycast::find_voxel(
+    let Some(crate::VoxelHit { coord, direction }) = crate::raycast::find_voxel(
         |pos| world.is_solid(pos),
         camera.translation(),
         camera.forward(),
@@ -272,7 +270,7 @@ fn draw_selected_voxel(
 fn break_place_block(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut world: ResMut<VoxelWorld>,
+    mut world: ResMut<crate::VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
     let do_break = mouse.just_pressed(MouseButton::Left);
@@ -284,7 +282,7 @@ fn break_place_block(
     let origin = camera.translation();
     let look = camera.forward();
 
-    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(
+    if let Some(crate::VoxelHit { coord, direction }) = crate::raycast::find_voxel(
         |pos| world.is_solid(pos),
         origin,
         look,
@@ -292,10 +290,10 @@ fn break_place_block(
     ) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
-            world.set_voxel(&mut commands, coord, VoxelType::Air);
+            world.set_voxel(&mut commands, coord, crate::VoxelType::Air);
         } else /* if do_place */ {
             let neighbor = coord + direction;
-            world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
+            world.set_voxel(&mut commands, neighbor, crate::VoxelType::Dirt);
         }
     }
 }

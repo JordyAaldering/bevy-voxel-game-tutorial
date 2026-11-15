@@ -3,6 +3,8 @@ mod player_input;
 #[cfg(since02)]
 mod player_settings;
 
+#[cfg(since02)]
+use player_settings::CameraSettings;
 #[allow(unused_imports)]
 pub use player_entity::*;
 
