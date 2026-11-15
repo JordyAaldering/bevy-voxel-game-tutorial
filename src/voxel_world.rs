@@ -252,7 +252,7 @@ impl VoxelWorld {
         }
     }
 }
-
+#[cfg(since08)]
 impl Index<&Chunk> for VoxelWorld {
     type Output = ChunkData;
 
@@ -262,6 +262,7 @@ impl Index<&Chunk> for VoxelWorld {
     }
 }
 
+#[cfg(since08)]
 impl IndexMut<&Chunk> for VoxelWorld {
     fn index_mut(&mut self, chunk: &Chunk) -> &mut Self::Output {
         Arc::make_mut(

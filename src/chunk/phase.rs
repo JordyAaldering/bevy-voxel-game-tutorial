@@ -36,6 +36,7 @@ impl ChunkGenerationPhase {
     pub fn neighbor_requirement(self) -> NeighborRequirement {
         match self {
             Self::HeightGeneration => NeighborRequirement::NONE,
+            #[cfg(since16)]
             Self::GenerateStructures => NeighborRequirement { radius: 1, diagonal: true },
             Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: true },
             Self::Done => NeighborRequirement::NONE,

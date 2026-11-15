@@ -19,6 +19,7 @@ use crate::{
     meshdata::MeshData,
     physics::PhysicsPlugin,
     player::{Player, PlayerPlugin},
+    raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
     voxel::VoxelType,
     voxel_world::{ChunkMaterial, VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},

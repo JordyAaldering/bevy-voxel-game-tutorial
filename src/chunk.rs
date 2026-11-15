@@ -33,13 +33,13 @@ pub struct NeedsRemesh;
 pub struct NeedsDespawn;
 
 #[derive(Clone)]
-#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+#[cfg_attr(since14, derive(wincode::SchemaWrite, wincode::SchemaRead))]
 pub struct ChunkData {
     #[allow(unused)]
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[cfg(since08)]
-    #[wincode(skip)]
+    #[cfg_attr(since14, wincode(skip))]
     entity: Option<Entity>,
     #[cfg(since13)]
     pub generation_phase: ChunkGenerationPhase,
@@ -65,6 +65,7 @@ impl ChunkData {
         }
     }
 
+    #[cfg(since13)]
     pub fn set_voxels(&mut self, other: ChunkData) {
         self.voxels = other.voxels;
     }

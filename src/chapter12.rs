@@ -24,6 +24,7 @@ use crate::{
     noise::NoiseSettings,
     physics::PhysicsPlugin,
     player::{Player, PlayerCamera, PlayerPlugin},
+    raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
     telemetry::TelemetryPlugin,
     voxel::VoxelType,

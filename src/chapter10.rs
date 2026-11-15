@@ -21,6 +21,7 @@ use crate::{
     noise::NoiseSettings,
     physics::PhysicsPlugin,
     player::{Player, PlayerPlugin},
+    raycast::VoxelHit,
     screenshot::ScreenshotPlugin,
     voxel::VoxelType,
     voxel_world::{VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
