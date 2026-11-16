@@ -19,6 +19,37 @@ pub struct Chunk {
     coord: ChunkCoord,
 }
 
+#[cfg(since19)]
+#[derive(Clone, Copy)]
+struct TerrainSample {
+    position: Vec3,
+    density: Density,
+    terrain: Option<TerrainType>,
+    variant_seed: u32,
+}
+
+#[cfg(since19)]
+impl TerrainSample {
+    fn marching_density(self) -> Density {
+        self.terrain.map_or(Density::EMPTY, |_| self.density)
+    }
+}
+
+#[cfg(since19)]
+#[derive(Component)]
+pub struct ChunkMeshes {
+    pub voxels: Entity,
+    pub terrain: Entity,
+}
+
+#[cfg(since19)]
+#[derive(Component)]
+pub struct VoxelMesh;
+
+#[cfg(since19)]
+#[derive(Component)]
+pub struct TerrainMesh;
+
 /// Marker component for a chunk that needs to be remeshed.
 /// This is added when a chunk is modified, and removed when a mesh generation task is spawned.
 /// If a chunk is modified whilst its mesh is being generated, it will remain dirty and be remeshed again once the task is finished.
@@ -36,11 +67,13 @@ pub struct NeedsDespawn;
 #[cfg_attr(since14, derive(wincode::SchemaWrite, wincode::SchemaRead))]
 pub struct ChunkData {
     #[allow(unused)]
-    coord: ChunkCoord,
-    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    pub coord: ChunkCoord,
+    pub voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    #[cfg(since19)]
+    pub density: [Density; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[cfg(since08)]
     #[cfg_attr(since14, wincode(skip))]
-    entity: Option<Entity>,
+    pub entity: Option<Entity>,
     #[cfg(since13)]
     pub generation_phase: ChunkGenerationPhase,
 }
@@ -96,7 +129,12 @@ impl ChunkData {
     pub fn new(coord: ChunkCoord, entity: Entity) -> Self {
         Self {
             coord,
+            #[cfg(until18)]
             voxels: [VoxelType::Air; _],
+            #[cfg(since19)]
+            voxels: [VoxelType::AIR; _],
+            #[cfg(since19)]
+            density: [Density::EMPTY; _],
             entity: Some(entity),
             #[cfg(since13)]
             generation_phase: ChunkGenerationPhase::HeightGeneration,
@@ -122,6 +160,7 @@ impl ChunkData {
     }
 
     /// Builds the mesh from owned data only, so it can run on another thread.
+    #[cfg(until18)]
     pub fn build_mesh(
         &self,
         neighbors: &ChunkNeighbors,
@@ -153,6 +192,121 @@ impl ChunkData {
 
         mesh.build()
     }
+
+    #[cfg(since19)]
+    pub fn build_mesh(
+        &self,
+        neighbors: &ChunkNeighbors,
+        chunk_pos: ChunkCoord,
+        atlas: &VoxelAtlas,
+    ) -> Mesh {
+        let mut voxel_mesh = MeshData::new(atlas.layout());
+
+        for (voxel_pos, voxel) in self.iter()
+            .filter(|(_, v)| v.is_block())
+        {
+            for direction in Direction::ALL {
+                if self.is_face_visible(neighbors, voxel_pos, direction) {
+                    let origin = voxel_pos.local_position();
+                    let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
+                    voxel_mesh.add_quad(direction, origin, texture);
+                }
+            }
+        }
+
+        voxel_mesh.build()
+    }
+
+    #[cfg(since19)]
+    pub fn build_terrain_mesh(
+        &self,
+        neighbors: &ChunkNeighbors,
+        atlas: &VoxelAtlas,
+    ) -> Mesh {
+        let mut terrain_mesh = MeshData::new(atlas.layout());
+        let north = neighbors.north.as_deref().expect("Terrain meshing requires the north neighbor");
+        let north_east = neighbors.north_east.as_deref().expect("Terrain meshing requires the north-east neighbor");
+        let east = neighbors.east.as_deref().expect("Terrain meshing requires the east neighbor");
+
+        for z in 0..CHUNK_WIDTH {
+            for y in 0..CHUNK_HEIGHT {
+                for x in 0..CHUNK_WIDTH {
+                    let samples = self.terrain_cell_corners(
+                        north,
+                        north_east,
+                        east,
+                        VoxelCoord::new(x, y, z),
+                    );
+                    terrain_mesh.add_marching_cube(
+                        samples.map(|sample| (sample.position, sample.marching_density())),
+                        |corner, direction| {
+                            let sample = samples[corner];
+                            sample.terrain.map(|terrain| {
+                                atlas.texture(
+                                    VoxelType::from_terrain(terrain),
+                                    direction,
+                                    sample.variant_seed,
+                                )
+                            })
+                        },
+                    );
+                }
+            }
+        }
+
+        terrain_mesh.build()
+    }
+
+    #[cfg(since19)]
+    fn terrain_cell_corners(
+        &self,
+        north: &ChunkData,
+        north_east: &ChunkData,
+        east: &ChunkData,
+        origin: VoxelCoord,
+    ) -> [TerrainSample; 8] {
+        // Cells belong to the chunk containing their minimum x/z sample. The top
+        // layer samples empty space above the world; the bottom remains open.
+        const OFFSETS: [(usize, usize, usize); 8] = [
+            (0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1),
+            (0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1),
+        ];
+
+        OFFSETS.map(|(dx, dy, dz)| {
+            let x = origin.x + dx;
+            let y = origin.y + dy;
+            let z = origin.z + dz;
+            let position = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+            if y == CHUNK_HEIGHT {
+                TerrainSample {
+                    position,
+                    density: Density::EMPTY,
+                    terrain: None,
+                    variant_seed: 0,
+                }
+            } else {
+                let source = match (x == CHUNK_WIDTH, z == CHUNK_WIDTH) {
+                    (false, false) => self,
+                    (false, true) => north,
+                    (true, true) => north_east,
+                    (true, false) => east,
+                };
+                let local = VoxelCoord::new(x % CHUNK_WIDTH, y, z % CHUNK_WIDTH);
+                let voxel = source[local];
+                let terrain = match voxel.unpack().expect("Chunk contains an invalid voxel") {
+                    VoxelTypeItem::Terrain(terrain) => Some(terrain),
+                    VoxelTypeItem::Air | VoxelTypeItem::Block(_) => None,
+                };
+                TerrainSample {
+                    position,
+                    density: source.density[local.index()],
+                    terrain,
+                    variant_seed: variant_seed(source.coord, local),
+                }
+            }
+        })
+    }
+
 
     fn is_face_visible(
         &self,
@@ -186,7 +340,6 @@ impl ChunkData {
         neighbor_chunk[neighbor_pos]
             .is_transparent()
     }
-
 }
 
 impl std::ops::Index<VoxelCoord> for ChunkData {

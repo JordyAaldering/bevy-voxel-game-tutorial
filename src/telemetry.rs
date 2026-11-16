@@ -1,5 +1,5 @@
-#[cfg(since20)]
-use crate::{ChunkGenerationPhase, VoxelWorld};
+#[allow(unused_imports)]
+use crate::*;
 
 use std::{net::SocketAddr, time::Duration};
 
@@ -61,7 +61,7 @@ impl Plugin for TelemetryPlugin {
             .add_systems(Update,
                 (
                     collect_telemetry,
-                    #[cfg(since20)] collect_chunk_telemetry,
+                    #[cfg(since19)] collect_chunk_telemetry,
                 )
                 .chain()
                 .run_if(on_timer(Duration::from_millis(250)))
@@ -88,7 +88,7 @@ async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .unwrap();
 }
 
-#[cfg(since20)]
+#[cfg(since19)]
 fn collect_chunk_telemetry(
     world: Res<VoxelWorld>,
     tasks: Query<&ChunkGenerationTask>,

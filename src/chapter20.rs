@@ -415,10 +415,6 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 #[component(storage = "SparseSet")]
 struct NeedsGenerationCheck;
 
-/// A chunk generation phase running asynchronously.
-#[derive(Component)]
-struct ChunkGenerationTask(Task<ChunkGenerationResult>);
-
 enum ChunkGenerationResult {
     Data(ChunkGenerationPhase, Box<ChunkData>),
     Structures(Vec<WorldCoord>),

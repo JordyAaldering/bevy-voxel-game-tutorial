@@ -68,7 +68,7 @@ impl<'a> MeshData<'a> {
     }
 
     /// Appends a triangle with mesh-local positions and atlas-space UVs.
-    #[cfg(since20)]
+    #[cfg(since19)]
     pub fn add_triangle(&mut self, vertices: [Vec3; 3], normals: [Vec3; 3], uvs: [Vec2; 3]) {
         let start = self.vertices.len() as u32;
         self.indices.extend([start, start + 1, start + 2]);
@@ -82,7 +82,7 @@ impl<'a> MeshData<'a> {
     /// (0,0,0), (1,0,0), (1,0,1), (0,0,1), then the same order at y = 1.
     /// `texture` resolves the material of a solid corner for a face direction.
     /// Solid corners without a material are allowed and do not produce triangles.
-    #[cfg(since20)]
+    #[cfg(since19)]
     pub fn add_marching_cube(
         &mut self,
         corners: [(Vec3, Density); 8],
@@ -350,7 +350,7 @@ fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
     ]
 }
 
-#[cfg(since20)]
+#[cfg(since19)]
 fn normal_direction(normal: Vec3) -> Direction {
     let abs = normal.abs();
     if abs.y >= abs.x && abs.y >= abs.z {

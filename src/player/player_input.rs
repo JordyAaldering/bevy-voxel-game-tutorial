@@ -290,10 +290,18 @@ fn break_place_block(
     ) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
-            world.set_voxel(&mut commands, coord, crate::VoxelType::Air);
+            #[cfg(until18)]
+            let voxel = crate::VoxelType::Air;
+            #[cfg(since19)]
+            let voxel = crate::VoxelType::AIR;
+            world.set_voxel(&mut commands, coord, voxel);
         } else /* if do_place */ {
+            #[cfg(until18)]
+            let voxel = crate::VoxelType::Dirt;
+            #[cfg(since19)]
+            let voxel = crate::VoxelType::from_terrain(crate::TerrainType::Dirt);
             let neighbor = coord + direction;
-            world.set_voxel(&mut commands, neighbor, crate::VoxelType::Dirt);
+            world.set_voxel(&mut commands, neighbor, voxel);
         }
     }
 }

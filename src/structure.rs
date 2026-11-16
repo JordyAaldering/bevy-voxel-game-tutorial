@@ -13,9 +13,9 @@ impl Structures {
 
     pub fn load() -> Result<Self, String> {
         Ok(Self {
-            #[cfg(until19)]
+            #[cfg(until18)]
             tree: Self::load_structure("tree_ch16")?,
-            #[cfg(since20)]
+            #[cfg(since19)]
             tree: Self::load_structure("tree")?,
         })
     }
@@ -45,9 +45,9 @@ pub struct Structure {
 pub struct StructureVoxel {
     /// Offset relative to the structure origin (can be negative).
     pub pos: WorldCoord,
-    #[cfg(until19)]
+    #[cfg(until18)]
     pub voxel: VoxelType,
-    #[cfg(since20)]
+    #[cfg(since19)]
     pub voxel: VoxelTypeItem,
     /// Orientation, for voxels that have one (e.g. logs).
     #[serde(default, skip_serializing_if = "Option::is_none")]

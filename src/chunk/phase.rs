@@ -106,7 +106,13 @@ pub enum ChunkGenerationResult {
 pub enum ChunkGenerationResult {
     Data(ChunkGenerationPhase, Box<ChunkData>),
     Structures(Vec<WorldCoord>),
+    #[cfg(until18)]
     Mesh(Mesh),
+    #[cfg(since19)]
+    Mesh {
+        voxels: Mesh,
+        terrain: Mesh,
+    },
     #[cfg(since18)]
     Error(String),
 }

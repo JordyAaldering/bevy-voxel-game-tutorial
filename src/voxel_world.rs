@@ -39,7 +39,7 @@ type TChunkData = Arc<ChunkData>;
 
 #[derive(Default, Resource)]
 pub struct VoxelWorld {
-    chunks: HashMap<ChunkCoord, TChunkData>,
+    pub chunks: HashMap<ChunkCoord, TChunkData>,
 }
 
 /// Marker component for a chunk that is currently being meshed on another thread.
@@ -256,7 +256,25 @@ impl VoxelWorld {
             self.notify_chunk(commands, chunk_pos + CompassQuadrant::West);
         }
     }
+
+    #[cfg(since19)]
+    pub fn get_density(&self, pos: WorldCoord) -> Option<Density> {
+        if !pos.in_bounds() {
+            return None;
+        }
+
+        let chunk_pos = pos.chunk_coord();
+        self.get_chunk(chunk_pos)
+            .filter(|chunk| chunk.generation_phase >= ChunkGenerationPhase::MeshGeneration
+                && self.neighbors_ready_for(chunk_pos, ChunkGenerationPhase::MeshGeneration))
+            .map(|chunk| {
+                let voxel_pos = pos.local_coord();
+                chunk.density[voxel_pos.index()]
+            })
+    }
+
 }
+
 #[cfg(since08)]
 impl Index<&Chunk> for VoxelWorld {
     type Output = ChunkData;
@@ -584,7 +602,7 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     }
 }
 
-#[cfg(since17)]
+#[cfg(all(since17, until18))]
 fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
     let columns = config.columns(chunk.coord());
     for x in 0..CHUNK_WIDTH {
@@ -604,6 +622,33 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
     }
 }
 
+#[cfg(since19)]
+fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
+    let columns = config.columns(chunk.coord());
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_WIDTH {
+            let column = &columns[x + z * CHUNK_WIDTH];
+            let height = column.height;
+
+            let pos = VoxelCoord::new(x, height, z);
+            chunk[pos] = VoxelType::from_terrain(column.surface);
+            chunk.density[pos.index()] = Density::FULL;
+
+            for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
+                let pos = VoxelCoord::new(x, y, z);
+                chunk[pos] = VoxelType::from_terrain(column.subsurface);
+                chunk.density[pos.index()] = Density::FULL;
+            }
+
+            for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
+                let pos = VoxelCoord::new(x, y, z);
+                chunk[pos] = VoxelType::from_terrain(TerrainType::Stone);
+                chunk.density[pos.index()] = Density::FULL;
+            }
+        }
+    }
+}
+
 /// Carves caves out of the terrain, which has to be done before structures are placed on top of it.
 /// Only this chunk is read and written, the noise is a pure function of the world position.
 #[cfg(since17)]
@@ -616,7 +661,13 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
             for y in 1..=height {
                 let pos = VoxelCoord::new(x, y, z);
                 if noise[pos.index()] > config.caves.threshold {
-                    chunk[pos] = VoxelType::Air;
+                    #[cfg(until18)] {
+                        chunk[pos] = VoxelType::Air;
+                    }
+                    #[cfg(since19)] {
+                        chunk[pos] = VoxelType::AIR;
+                        chunk.density[pos.index()] = Density::EMPTY;
+                    }
                 }
             }
         }
@@ -624,7 +675,7 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
 }
 
 /// Replaces stone with ore. Only stone is replaced, so ores do not overwrite the surface.
-#[cfg(since17)]
+#[cfg(all(since17, until18))]
 fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>]) {
     for x in 0..CHUNK_WIDTH {
         for z in 0..CHUNK_WIDTH {
@@ -637,6 +688,32 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
                     ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
                 }) {
                     chunk[coord] = ore;
+                }
+            }
+        }
+    }
+}
+
+/// Replaces stone with ore. Only stone is replaced, so ores do not overwrite the surface.
+#[cfg(since19)]
+fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>]) {
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_WIDTH {
+            for y in 0..CHUNK_HEIGHT {
+                let coord = VoxelCoord::new(x, y, z);
+                if !chunk[coord].is_terrain_id(TerrainType::Stone) {
+                    continue;
+                }
+
+                if let Some(ore) = config.ores
+                    .iter()
+                    .zip(maps)
+                    .find_map(|(ore, map)|
+                {
+                    ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
+                }) {
+                    chunk[coord] = VoxelType::from_terrain(ore);
+                    chunk.density[coord.index()] = Density::FULL;
                 }
             }
         }
@@ -707,7 +784,7 @@ fn on_chunk_data_changed(
     }
 }
 
-#[cfg(since13)]
+#[cfg(all(since13, until18))]
 fn poll_chunk_generation_tasks(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
@@ -771,6 +848,88 @@ fn poll_chunk_generation_tasks(
                 data.generation_phase = data.generation_phase.next();
             }
             #[cfg(since18)]
+            ChunkGenerationResult::Error(e) => panic!("Chunk {} generation failed: {e}", chunk.coord()),
+        }
+
+        commands.entity(entity).remove::<ChunkGenerationTask>();
+    }
+
+    Ok(())
+}
+
+#[cfg(since19)]
+fn poll_chunk_generation_tasks(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    structures: Res<Structures>,
+    mut tasks: Query<(Entity, &Chunk, &mut ChunkGenerationTask, Option<&ChunkMeshes>)>,
+    voxel_meshes: Query<&Mesh3d, With<VoxelMesh>>,
+    terrain_meshes: Query<&Mesh3d, With<TerrainMesh>>,
+    material: Res<ChunkMaterial>,
+) -> Result<(), BevyError> {
+    for (entity, chunk, mut task, chunk_meshes) in &mut tasks {
+        let Some(result) = block_on(future::poll_once(&mut task.0)) else {
+            continue;
+        };
+
+        match result {
+            ChunkGenerationResult::Data(phase, generated) => {
+                let data = &mut world[chunk];
+                assert_eq!(data.generation_phase, phase);
+                data.voxels = generated.voxels;
+                data.density = generated.density;
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord());
+                world.notify_neighbors(&mut commands, chunk.coord());
+            }
+            ChunkGenerationResult::Structures(origins) => {
+                assert_eq!(world[chunk].generation_phase, ChunkGenerationPhase::GenerateStructures);
+                for origin in origins {
+                    // A cave may have removed the surface below the tree.
+                    let ground = origin + Direction::Bottom;
+                    if world.chunks[&chunk.coord()][ground.local_coord()] == VoxelType::AIR {
+                        continue;
+                    }
+                    world.place_structure(&structures.tree, origin);
+                }
+                let data = &mut world[chunk];
+                data.generation_phase = data.generation_phase.next();
+                world.notify_chunk(&mut commands, chunk.coord());
+                world.notify_neighbors(&mut commands, chunk.coord());
+            }
+            ChunkGenerationResult::Mesh { voxels, terrain } => {
+                match chunk_meshes {
+                    Some(handle) => {
+                        let voxel_handle = &voxel_meshes.get(handle.voxels)?.0;
+                        meshes.insert(voxel_handle, voxels)?;
+
+                        let terrain_handle = &terrain_meshes.get(handle.terrain)?.0;
+                        meshes.insert(terrain_handle, terrain)?;
+                    }
+                    None => {
+                        let voxels = commands.spawn((
+                            VoxelMesh,
+                            Name::new("Voxels mesh"),
+                            Mesh3d(meshes.add(voxels)),
+                            MeshMaterial3d(material.0.clone()),
+                            ChildOf(entity),
+                        )).id();
+                        let terrain = commands.spawn((
+                            TerrainMesh,
+                            Name::new("Terrain mesh"),
+                            Mesh3d(meshes.add(terrain)),
+                            MeshMaterial3d(material.0.clone()),
+                            ChildOf(entity),
+                        )).id();
+                        commands.entity(entity).insert(ChunkMeshes { voxels, terrain });
+                    }
+                }
+
+                let data = &mut world[chunk];
+                assert!(data.generation_phase >= ChunkGenerationPhase::MeshGeneration);
+                data.generation_phase = data.generation_phase.next();
+            }
             ChunkGenerationResult::Error(e) => panic!("Chunk {} generation failed: {e}", chunk.coord()),
         }
 
@@ -951,15 +1110,26 @@ fn start_chunk_generation_tasks(
                     ChunkGenerationResult::Structures(generate_structures(coord, &config))
                 })
             }
-            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
+            ChunkGenerationPhase::MeshGeneration |
+            ChunkGenerationPhase::Done => {
                 let data = Arc::clone(data);
                 let neighbors = ChunkNeighbors::from(chunk.coord(), &world.chunks);
                 let atlas = Arc::clone(&atlas.0);
                 let coord = chunk.coord();
                 trace!("Generating mesh for chunk {}", coord);
-                pool.spawn(async move {
+
+                #[cfg(until18)]
+                let task = pool.spawn(async move {
                     ChunkGenerationResult::Mesh(data.build_mesh(&neighbors, coord, &atlas))
-                })
+                });
+                #[cfg(since19)]
+                let task = pool.spawn(async move {
+                    ChunkGenerationResult::Mesh {
+                        voxels: data.build_mesh(&neighbors, coord, &atlas),
+                        terrain: data.build_terrain_mesh(&neighbors, &atlas),
+                    }
+                });
+                task
             }
         };
 
@@ -976,10 +1146,10 @@ impl VoxelWorld {
     }
 }
 
-#[cfg(since16)]
 impl VoxelWorld {
     /// Writes the structure into the world, without triggering remeshes.
     /// Structures cannot extend further than one chunk away from their origin.
+    #[cfg(all(since16, until18))]
     fn place_structure(&mut self, structure: &Structure, origin: WorldCoord) {
         for voxel in &structure.voxels {
             let coord = origin + voxel.pos;
@@ -990,6 +1160,26 @@ impl VoxelWorld {
             let chunk = self.chunks.get_mut(&coord.chunk_coord())
                 .expect("Structure generation requires all neighboring chunk data");
             Arc::make_mut(chunk)[coord.local_coord()] = voxel.voxel;
+        }
+    }
+
+    /// Writes the structure into the world, without triggering remeshes.
+    /// Structures cannot extend further than one chunk away from their origin.
+    #[cfg(since19)]
+    fn place_structure(&mut self, structure: &Structure, origin: WorldCoord) {
+        for voxel in &structure.voxels {
+            let coord = origin + voxel.pos;
+            if !coord.in_bounds() {
+                continue;
+            }
+
+            let chunk = self.chunks.get_mut(&coord.chunk_coord())
+                .expect("Structure generation requires all neighboring chunk data");
+            let chunk = Arc::make_mut(chunk);
+            let local = coord.local_coord();
+            let voxel_type: VoxelType = voxel.voxel.into();
+            chunk[local] = voxel_type;
+            chunk.density[local.index()] = if voxel_type.is_solid() { Density::FULL } else { Density::EMPTY };
         }
     }
 }
