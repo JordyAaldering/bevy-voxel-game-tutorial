@@ -107,6 +107,8 @@ pub enum ChunkGenerationResult {
     Data(ChunkGenerationPhase, Box<ChunkData>),
     Structures(Vec<WorldCoord>),
     Mesh(Mesh),
+    #[cfg(since18)]
+    Error(String),
 }
 
 /// Event triggered when the voxel data of a chunk has changed, requiring a remesh.

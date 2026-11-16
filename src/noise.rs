@@ -1,7 +1,10 @@
-#[cfg(since20)]
+#[cfg(since18)]
 pub mod gpu;
 pub mod opensimplex2s;
 pub mod voronoi;
+
+#[cfg(since18)]
+pub use gpu::GpuPlugin;
 
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH};
 
@@ -9,12 +12,12 @@ use better_default::Default;
 use bevy::math::Vec2;
 
 /// A pending noise batch. Dropping it abandons the request.
-#[cfg(since20)]
+#[cfg(since18)]
 pub struct NoiseGenerationTask {
     pub receiver: async_channel::Receiver<Result<Vec<f32>, String>>,
 }
 
-#[cfg(since20)]
+#[cfg(since18)]
 impl NoiseGenerationTask {
     pub async fn result(self) -> Result<Vec<f32>, String> {
         self.receiver.recv().await.map_err(|error| format!("noise task stopped: {error}"))?
