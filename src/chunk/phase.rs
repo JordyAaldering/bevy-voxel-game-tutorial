@@ -6,6 +6,10 @@ use bevy::{prelude::*, tasks::Task};
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
 pub enum ChunkGenerationPhase {
     HeightGeneration,
+    #[cfg(since17)]
+    OreGeneration,
+    #[cfg(since17)]
+    CaveGeneration,
     #[cfg(since16)]
     GenerateStructures,
     MeshGeneration,
@@ -22,10 +26,22 @@ impl ChunkGenerationPhase {
         }
     }
 
-    #[cfg(since16)]
+    #[cfg(only16)]
     pub fn next(self) -> Self {
         match self {
             Self::HeightGeneration => Self::GenerateStructures,
+            Self::GenerateStructures => Self::MeshGeneration,
+            Self::MeshGeneration  => Self::Done,
+            Self::Done => Self::Done,
+        }
+    }
+
+    #[cfg(since17)]
+    pub fn next(self) -> Self {
+        match self {
+            Self::HeightGeneration => Self::OreGeneration,
+            Self::OreGeneration => Self::CaveGeneration,
+            Self::CaveGeneration => Self::GenerateStructures,
             Self::GenerateStructures => Self::MeshGeneration,
             Self::MeshGeneration  => Self::Done,
             Self::Done => Self::Done,
@@ -36,6 +52,10 @@ impl ChunkGenerationPhase {
     pub fn neighbor_requirement(self) -> NeighborRequirement {
         match self {
             Self::HeightGeneration => NeighborRequirement::NONE,
+            #[cfg(since17)]
+            Self::OreGeneration => NeighborRequirement::NONE,
+            #[cfg(since17)]
+            Self::CaveGeneration => NeighborRequirement::NONE,
             #[cfg(since16)]
             Self::GenerateStructures => NeighborRequirement { radius: 1, diagonal: true },
             Self::MeshGeneration => NeighborRequirement { radius: 1, diagonal: true },

@@ -19,8 +19,13 @@ pub const ATLAS_COLUMNS: u32 = 9;
 #[cfg(all(since07, until14))]
 pub const ATLAS_ROWS: u32 = 10;
 
-#[cfg(since10)]
+#[cfg(since13)]
+const SUBSURFACE_DEPTH: usize = 2;
+
+#[cfg(all(since10, until16))]
 const CHUNK_LOAD_RADIUS: i32 = 4;
+#[cfg(since17)]
+const CHUNK_LOAD_RADIUS: i32 = 5;
 
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
@@ -558,7 +563,7 @@ fn despawn_retired_chunks(
     }
 }
 
-#[cfg(since13)]
+#[cfg(all(since13, until16))]
 fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     let heights = config.height.area2(config.seed, chunk.coord().x, chunk.coord().z);
     for x in 0..CHUNK_WIDTH {
@@ -568,15 +573,121 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
             // Two layers of dirt
-            for y in (height - 2).max(0)..height {
+            for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
                 chunk[VoxelCoord::new(x, y, z)] = VoxelType::Dirt;
             }
             // Below that is stone
-            for y in 0..(height - 2).max(0) {
+            for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
                 chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
             }
         }
     }
+}
+
+#[cfg(since17)]
+fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
+    let columns = config.columns(chunk.coord());
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_WIDTH {
+            let column = &columns[x + z * CHUNK_WIDTH];
+            let height = column.height;
+
+            chunk[VoxelCoord::new(x, height, z)] = column.surface;
+            for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
+                chunk[VoxelCoord::new(x, y, z)] = column.subsurface;
+            }
+            // Below that is stone
+            for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
+                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
+            }
+        }
+    }
+}
+
+#[cfg(since17)]
+/// Carves caves out of the terrain, which has to be done before structures are placed on top of it.
+/// Only this chunk is read and written, the noise is a pure function of the world position.
+fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
+    let columns = config.columns(chunk.coord());
+    let noise = config.cave_noise(chunk.coord());
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_WIDTH {
+            let height = columns[x + z * CHUNK_WIDTH].height;
+            // Caves may open up at the surface, only the bottom layer is kept
+            for y in 1..=height {
+                let pos = VoxelCoord::new(x, y, z);
+                if noise[pos.index()] > config.caves.threshold {
+                    chunk[pos] = VoxelType::Air;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(since17)]
+/// Replaces stone with ore. Only stone is replaced, so ores do not overwrite the surface.
+fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig) {
+    for x in 0..CHUNK_WIDTH {
+        let world_x = chunk.coord().x * CHUNK_WIDTH as i32 + x as i32;
+
+        for z in 0..CHUNK_WIDTH {
+            let world_z = chunk.coord().z * CHUNK_WIDTH as i32 + z as i32;
+
+            for y in 0..CHUNK_HEIGHT {
+                let coord = VoxelCoord::new(x, y, z);
+                if chunk[coord] != VoxelType::Stone {
+                    continue;
+                }
+                if let Some(ore) = config.ore_at(world_x, y as i32, world_z) {
+                    chunk[coord] = ore;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(only16)]
+fn generate_structures(coord: ChunkCoord, config: &TerrainConfig) -> Vec<WorldCoord> {
+    /// Local (x, z) columns of each chunk that get a tree: one in the middle, and one in the corner
+    /// whose leaves overflow into three neighbouring chunks.
+    const TREE_COLUMNS: [(usize, usize); 2] = [
+        (CHUNK_WIDTH / 2, CHUNK_WIDTH / 2),
+        (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
+    ];
+
+    let heights = config.height.area2(config.seed, coord.x, coord.z);
+    let mut origins = Vec::new();
+    for (x, z) in TREE_COLUMNS {
+        let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+        // Trees stand on top of the grass
+        let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
+        let world_y = height as i32 + 1;
+        origins.push(WorldCoord::new(world_x, world_y, world_z));
+    }
+    origins
+}
+
+#[cfg(since17)]
+fn generate_structures(coord: ChunkCoord, config: &WorldConfig) -> Vec<WorldCoord> {
+    let columns = config.columns(coord);
+    let mut origins = Vec::new();
+    for z in 0..CHUNK_WIDTH {
+        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+        for x in 0..CHUNK_WIDTH {
+            let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+
+            let column = &columns[x + z * CHUNK_WIDTH];
+            if config.has_tree(column, world_x, world_z) {
+                // Trees stand on top of the surface
+                let world_y = column.height as i32 + 1;
+                origins.push(WorldCoord::new(world_x, world_y, world_z));
+            }
+        }
+    }
+    origins
 }
 
 #[cfg(since13)]
@@ -674,7 +785,10 @@ fn poll_chunk_generation_tasks(
 fn start_chunk_generation_tasks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
+    #[cfg(until16)]
     config: Res<TerrainConfig>,
+    #[cfg(since17)]
+    config: Res<WorldConfig>,
     #[cfg(until14)] atlas: Res<VoxelAtlas>,
     #[cfg(since15)] atlas: Res<SharedVoxelAtlas>,
     chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
@@ -706,7 +820,7 @@ fn start_chunk_generation_tasks(
                     ChunkGenerationResult::Data(generated)
                 })
             }
-            #[cfg(since16)]
+            #[cfg(only16)]
             ChunkGenerationPhase::HeightGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
@@ -715,6 +829,24 @@ fn start_chunk_generation_tasks(
                     let mut generated = Box::new((*data).clone());
                     match phase {
                         ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
+                        _ => unreachable!(),
+                    }
+                    ChunkGenerationResult::Data(phase, generated)
+                })
+            }
+            #[cfg(since17)]
+            ChunkGenerationPhase::HeightGeneration |
+            ChunkGenerationPhase::OreGeneration |
+            ChunkGenerationPhase::CaveGeneration => {
+                let data = Arc::clone(data);
+                let config = config.clone();
+                trace!("Generating {:?} for chunk {}", phase, chunk.coord());
+                pool.spawn(async move {
+                    let mut generated = Box::new((*data).clone());
+                    match phase {
+                        ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
+                        ChunkGenerationPhase::OreGeneration => generate_ores(&mut generated, &config),
+                        ChunkGenerationPhase::CaveGeneration => generate_caves(&mut generated, &config),
                         _ => unreachable!(),
                     }
                     ChunkGenerationResult::Data(phase, generated)
@@ -781,27 +913,4 @@ impl VoxelWorld {
             Arc::make_mut(chunk)[coord.local_coord()] = voxel.voxel;
         }
     }
-}
-
-#[cfg(since16)]
-fn generate_structures(coord: ChunkCoord, config: &TerrainConfig) -> Vec<WorldCoord> {
-    /// Local (x, z) columns of each chunk that get a tree: one in the middle, and one in the corner
-    /// whose leaves overflow into three neighbouring chunks.
-    const TREE_COLUMNS: [(usize, usize); 2] = [
-        (CHUNK_WIDTH / 2, CHUNK_WIDTH / 2),
-        (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
-    ];
-
-    let heights = config.height.area2(config.seed, coord.x, coord.z);
-    let mut origins = Vec::new();
-    for (x, z) in TREE_COLUMNS {
-        let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
-        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
-
-        // Trees stand on top of the grass
-        let height = (heights[x + z * CHUNK_WIDTH] as i32 as usize).clamp(0, CHUNK_HEIGHT - 1);
-        let world_y = height as i32 + 1;
-        origins.push(WorldCoord::new(world_x, world_y, world_z));
-    }
-    origins
 }

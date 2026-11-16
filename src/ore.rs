@@ -1,17 +1,20 @@
-use crate::{TerrainType, noise::{NoiseSettings, NoiseType}};
-
-use serde::{Deserialize, Serialize};
+use crate::*;
 
 /// Voronoi cells are this many times wider than the largest cluster radius.
-pub(crate) const CELL_SIZE_FACTOR: f32 = 4.0;
+pub const CELL_SIZE_FACTOR: f32 = 4.0;
+
 /// A type of ore, which spawns in clusters inside stone.
 ///
 /// Clusters are placed with Voronoi noise: every cell has one feature point, which is the center
 /// of a cluster. `rarity` controls the threshold and hence the cluster radius.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Ore {
     pub name: String,
     /// The voxel that replaces stone.
+    #[cfg(all(since17, until18))]
+    pub voxel: VoxelType,
+    #[cfg(since19)]
     pub voxel: TerrainType,
     /// Lowest world height (y) the ore is found at, inclusive.
     pub min_height: i32,
@@ -24,15 +27,15 @@ pub struct Ore {
 }
 
 impl Ore {
-    pub(crate) fn noise_settings(&self) -> NoiseSettings {
+    pub fn noise_settings(&self) -> NoiseSettings {
         NoiseSettings {
             noise_type: NoiseType::Voronoi,
             frequency: if self.cluster_size > 0.0 { 1.0 / (self.cluster_size * CELL_SIZE_FACTOR) } else { 0.0 },
-            ..Default::default()
+            ..default()
         }
     }
 
-    pub(crate) fn contains_noise(&self, y: i32, value: f32) -> bool {
+    pub fn contains_noise(&self, y: i32, value: f32) -> bool {
         y >= self.min_height && y <= self.max_height && self.cluster_size > 0.0
             && self.rarity > 0.0 && value <= -1.0 + 0.5 * self.rarity.clamp(0.0, 1.0).cbrt()
     }

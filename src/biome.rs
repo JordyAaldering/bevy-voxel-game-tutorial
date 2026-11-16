@@ -1,4 +1,4 @@
-use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, TerrainType, coords::ChunkCoord, noise::NoiseSettings, ore::Ore, write_atomic};
+use crate::*;
 
 use std::{fs, io, path::{Path, PathBuf}};
 
@@ -22,8 +22,14 @@ pub struct Biome {
     /// Terrain height; in blocks.
     pub height: NoiseSettings,
     /// Top-most voxel.
+    #[cfg(all(since17, until18))]
+    pub surface: VoxelType,
+    #[cfg(since19)]
     pub surface: TerrainType,
     /// Voxels directly below the surface.
+    #[cfg(all(since17, until18))]
+    pub subsurface: VoxelType,
+    #[cfg(since19)]
     pub subsurface: TerrainType,
     /// Probability of a tree on each surface column, between 0.0 and 1.0.
     pub tree_density: f32,
@@ -64,7 +70,13 @@ pub struct WorldConfig {
 pub struct Column {
     /// Height of the top-most (surface) voxel.
     pub height: usize,
+    #[cfg(all(since17, until18))]
+    pub surface: VoxelType,
+    #[cfg(since19)]
     pub surface: TerrainType,
+    #[cfg(all(since17, until18))]
+    pub subsurface: VoxelType,
+    #[cfg(since19)]
     pub subsurface: TerrainType,
     pub tree_density: f32,
 }
@@ -180,11 +192,11 @@ impl WorldConfig {
         }
     }
 
-    pub(crate) fn cave_seed(&self) -> i32 {
+    pub fn cave_seed(&self) -> i32 {
         self.seed.wrapping_add(CAVE_SEED_OFFSET)
     }
 
-    pub(crate) fn ore_seed(&self, index: usize) -> i32 {
+    pub fn ore_seed(&self, index: usize) -> i32 {
         self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((index as i32 + 1).wrapping_mul(0x9E37_79B9u32 as i32))
     }
 
@@ -217,12 +229,22 @@ impl Default for WorldConfig {
                 },
                 threshold: 0.45,
             },
-            ores: vec![
-                Ore { name: "coal".into(), voxel: TerrainType::StoneCoal, min_height: 5, max_height: 60, rarity: 0.2, cluster_size: 3.0 },
-                Ore { name: "iron".into(), voxel: TerrainType::StoneIron, min_height: 5, max_height: 45, rarity: 0.1, cluster_size: 3.0 },
-                Ore { name: "gold".into(), voxel: TerrainType::StoneGold, min_height: 3, max_height: 25, rarity: 0.03, cluster_size: 2.0 },
-                Ore { name: "diamond".into(), voxel: TerrainType::StoneDiamond, min_height: 1, max_height: 14, rarity: 0.01, cluster_size: 1.5 },
-            ],
+            ores: {
+                #[cfg(all(since17, until18))]
+                {vec![
+                    Ore { name: "coal".into(), voxel: VoxelType::StoneCoal, min_height: 5, max_height: 60, rarity: 0.2, cluster_size: 3.0 },
+                    Ore { name: "iron".into(), voxel: VoxelType::StoneIron, min_height: 5, max_height: 45, rarity: 0.1, cluster_size: 3.0 },
+                    Ore { name: "gold".into(), voxel: VoxelType::StoneGold, min_height: 3, max_height: 25, rarity: 0.03, cluster_size: 2.0 },
+                    Ore { name: "diamond".into(), voxel: VoxelType::StoneDiamond, min_height: 1, max_height: 14, rarity: 0.01, cluster_size: 1.5 },
+                ]}
+                #[cfg(all(since19))]
+                {vec![
+                    Ore { name: "coal".into(), voxel: TerrainType::StoneCoal, min_height: 5, max_height: 60, rarity: 0.2, cluster_size: 3.0 },
+                    Ore { name: "iron".into(), voxel: TerrainType::StoneIron, min_height: 5, max_height: 45, rarity: 0.1, cluster_size: 3.0 },
+                    Ore { name: "gold".into(), voxel: TerrainType::StoneGold, min_height: 3, max_height: 25, rarity: 0.03, cluster_size: 2.0 },
+                    Ore { name: "diamond".into(), voxel: TerrainType::StoneDiamond, min_height: 1, max_height: 14, rarity: 0.01, cluster_size: 1.5 },
+                ]}
+            },
             biomes: vec![
                 Biome {
                     name: "plains".into(),
@@ -235,8 +257,14 @@ impl Default for WorldConfig {
                         frequency: 0.01,
                         ..default()
                     },
-                    surface: TerrainType::Grass,
-                    subsurface: TerrainType::Dirt,
+                    surface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Grass }
+                        #[cfg(since19)] { TerrainType::Grass }
+                    },
+                    subsurface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Dirt }
+                        #[cfg(since19)] { TerrainType::Dirt }
+                    },
                     tree_density: 0.004,
                 },
                 Biome {
@@ -249,8 +277,14 @@ impl Default for WorldConfig {
                         frequency: 0.015,
                         ..default()
                     },
-                    surface: TerrainType::Sand,
-                    subsurface: TerrainType::Sand,
+                    surface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Sand }
+                        #[cfg(since19)] { TerrainType::Sand }
+                    },
+                    subsurface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Sand }
+                        #[cfg(since19)] { TerrainType::Sand }
+                    },
                     tree_density: 0.0,
                 },
                 Biome {
@@ -264,8 +298,14 @@ impl Default for WorldConfig {
                         frequency: 0.01,
                         ..default()
                     },
-                    surface: TerrainType::Stone,
-                    subsurface: TerrainType::Stone,
+                    surface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Stone }
+                        #[cfg(since19)] { TerrainType::Stone }
+                    },
+                    subsurface: {
+                        #[cfg(all(since17, until18))] { VoxelType::Stone }
+                        #[cfg(since19)] { TerrainType::Stone }
+                    },
                     tree_density: 0.0005,
                 },
             ],

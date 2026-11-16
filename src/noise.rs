@@ -11,7 +11,7 @@ use bevy::math::Vec2;
 /// A pending noise batch. Dropping it abandons the request.
 #[cfg(since20)]
 pub struct NoiseGenerationTask {
-    pub(crate) receiver: async_channel::Receiver<Result<Vec<f32>, String>>,
+    pub receiver: async_channel::Receiver<Result<Vec<f32>, String>>,
 }
 
 #[cfg(since20)]

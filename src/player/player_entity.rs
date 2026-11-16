@@ -94,16 +94,23 @@ fn spawn_player(
 #[cfg(since14)]
 fn spawn_player(
     mut commands: Commands,
+    #[cfg(until16)]
     config: Res<crate::TerrainConfig>,
+    #[cfg(since17)]
+    config: Res<crate::WorldConfig>,
     editor_state: Res<crate::EditorState>,
 ) {
-    let world_height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
-
     let save = crate::WorldSave::load();
     let position = save
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
-        .unwrap_or(Vec3::new(1.5, world_height, 1.5));
+        .unwrap_or_else(|| {
+            #[cfg(until16)]
+            let height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
+            #[cfg(since17)]
+            let height = config.column(0, 0).height as f32 + 1.0;
+            Vec3::new(1.5, height, 1.5)
+        });
     let rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.player_rotation))
