@@ -27,6 +27,11 @@ For the first kind we want an efficient and compact binary format.
 The [bincode](https://crates.io/crates/bincode) crate is sadly no longer maintained, but the readme suggests some alternatives, pick the one that you prefer.
 We already use the JSON format for the telemetry server, so here I'll choose to reuse it, but any similar format would work.
 
+For now, I put the save data in the `savedata` directory in the project root.
+A better approach is to use the [dirs](https://crates.io/crates/dirs) crate to find the appropriate location for the platform.
+However, because we don't yet have versioning for our save data, we'll have to remove saves often, which is easier to do if they are in the project directory.
+(If you really want to use `dirs`, you can also create an extra binary just for removing the save data; that keeps it independent of the platform.)
+
 ## Steps performed
 
 1. Enable wincode's derive feature and derive `SchemaWrite`/`SchemaRead` for chunk data types. Skip the runtime-only ECS entity field.
