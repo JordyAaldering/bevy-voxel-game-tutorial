@@ -1,11 +1,15 @@
 use bevy::prelude::*;
 
 pub(super) fn register(app: &mut App) {
-    #[cfg(until08)]
-    app.add_systems(Startup, player.spawn());
-    #[cfg(since09)]
     app.add_systems(Startup, spawn_player);
 }
+
+// =====================================
+// Player entity components and markers.
+// =====================================
+
+#[cfg(since07)]
+const PLAYER_EYE_HEIGHT: f32 = 1.6;
 
 #[cfg(since07)]
 #[derive(Clone, Default, Component)]
@@ -15,110 +19,84 @@ pub struct Player {
 }
 
 #[cfg(since07)]
-#[derive(Clone, Copy, Default, Component)]
+#[derive(Clone, Default, Component)]
 pub struct PlayerCamera;
 
-#[cfg(since07)]
-impl Player {
-    const EYE_HEIGHT: f32 = 1.6;
+// =======================================
+// Systems for spawning the player entity.
+// =======================================
+
+#[cfg(until03)]
+fn spawn_player(mut commands: Commands) {
+    commands.spawn_scene(player(
+        vec3(1.5, 2.0, 4.0)
+    ));
 }
 
-#[cfg(until06)]
-fn player() -> impl Scene {
-    let position = {
-        #[cfg(until03)] { vec3(1.5, 2.0, 4.0) }
-        #[cfg(since04)] { vec3(5.0, 6.0, 11.0) }
-    };
-
-    bsn!{
-        #Player
-        Camera3d
-        Transform::from_translation(position)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y)
-        Projection::Perspective(PerspectiveProjection {
-            fov: 0.9,
-        })
-        Msaa::Off
-    }
+#[cfg(all(since04, until06))]
+fn spawn_player(mut commands: Commands) {
+    commands.spawn_scene(player(
+        vec3(5.0, 6.0, 11.0)
+    ));
 }
 
 #[cfg(all(since07, until08))]
-fn player() -> impl Scene {
-    bsn! {
-        #Player
-        Player
-        Transform::from_xyz(4.5, 5.0, 4.5)
-        Projection::Perspective(PerspectiveProjection {
-            fov: 0.9
-        })
-        Msaa::Off
-        InheritedVisibility
-        Children [
-            PlayerCamera
-            Camera3d
-            Transform::from_xyz(0.0, Player::EYE_HEIGHT, 0.0)
-        ]
-    }
+fn spawn_player(mut commands: Commands) {
+    commands.spawn_scene(player(
+        vec3(4.5, 5.0, 4.5),
+        Quat::IDENTITY,
+        Quat::IDENTITY,
+        Vec3::ZERO,
+    ));
 }
 
 #[cfg(all(since09, until13))]
 fn spawn_player(
     mut commands: Commands,
-    config: Res<crate::TerrainConfig>,
+    terrain: Res<crate::TerrainConfig>,
     #[cfg(since12)] editor_state: Res<crate::EditorState>,
 ) {
-    let world_height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
+    let height = terrain.height.sample2(terrain.seed, 0.0, 0.0);
 
-    commands.spawn((
-            Name::new("Player"),
-            Player::default(),
-            Projection::Perspective(PerspectiveProjection {
-                fov: 0.9,
-                ..default()
-            }),
-            Msaa::Off,
-            InheritedVisibility::default(),
-            Transform::from_xyz(0.5, world_height, 0.5),
-        ))
-        .with_children(|commands| {
-            commands.spawn((
-                PlayerCamera,
-                Camera3d::default(),
-                Transform::from_xyz(0.0, Player::EYE_HEIGHT, 0.0),
-                #[cfg(since12)]
-                editor_state.game_camera_target(),
-            ));
-        });
+    commands.spawn_scene(player(
+        vec3(0.5, height + 1.0, 0.5),
+        Quat::IDENTITY,
+        Quat::IDENTITY,
+        Vec3::ZERO,
+        #[cfg(since12)] editor_state.game_camera_target(),
+    ));
 }
 
 #[cfg(since14)]
 fn spawn_player(
     mut commands: Commands,
-    #[cfg(until16)]
-    config: Res<crate::TerrainConfig>,
-    #[cfg(since17)]
-    config: Res<crate::WorldConfig>,
+    #[cfg(until16)] terrain: Res<crate::TerrainConfig>,
+    #[cfg(since17)] terrain: Res<crate::WorldConfig>,
     editor_state: Res<crate::EditorState>,
 ) {
     let save = crate::WorldSave::load();
+
     let position = save
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
         .unwrap_or_else(|| {
-            #[cfg(until16)]
-            let height = config.height.sample2(config.seed, 0.0, 0.0) + 1.0;
-            #[cfg(since17)]
-            let height = config.column(0, 0).height as f32 + 1.0;
-            Vec3::new(1.5, height, 1.5)
+            let height = {
+                #[cfg(until16)] { terrain.height.sample2(terrain.seed, 0.0, 0.0) }
+                #[cfg(since17)] { terrain.column(0, 0).height as f32 }
+            };
+            Vec3::new(1.5, height + 1.0, 1.5)
         });
+
     let rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.player_rotation))
         .unwrap_or(Quat::IDENTITY);
+
     let camera_rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.camera_rotation))
         .unwrap_or(Quat::IDENTITY);
+
     let velocity = save
         .map(|save| Vec3::from(save.player_velocity))
         .unwrap_or(Vec3::ZERO);
@@ -132,7 +110,57 @@ fn spawn_player(
     ));
 }
 
-#[cfg(since14)]
+// ================================================
+// Bevy scene notation (bsn) for the player entity.
+// ================================================
+
+#[cfg(until06)]
+fn player(
+    position: Vec3,
+) -> impl Scene {
+    bsn!{
+        #Player
+        Camera3d
+        Transform::from_translation(position)
+            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y)
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9,
+        })
+        Msaa::Off
+    }
+}
+
+#[cfg(all(since07, until11))]
+fn player(
+    position: Vec3,
+    rotation: Quat,
+    camera_rotation: Quat,
+    velocity: Vec3,
+) -> impl Scene {
+    bsn! {
+        #Player
+        Player { velocity }
+        Transform {
+            translation: position,
+            rotation,
+        }
+        Projection::Perspective(PerspectiveProjection {
+            fov: 0.9
+        })
+        Msaa::Off
+        InheritedVisibility
+        Children [
+            PlayerCamera
+            Camera3d
+            Transform {
+                translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
+                rotation: camera_rotation,
+            }
+        ]
+    }
+}
+
+#[cfg(since12)]
 fn player(
     position: Vec3,
     rotation: Quat,
@@ -143,20 +171,20 @@ fn player(
     bsn! {
         #Player
         Player { velocity }
+        Transform {
+            translation: position,
+            rotation,
+        }
         Projection::Perspective(PerspectiveProjection {
             fov: 0.9
         })
         Msaa::Off
         InheritedVisibility
-        Transform {
-            translation: position,
-            rotation,
-        }
         Children [
             PlayerCamera
             Camera3d
             Transform {
-                translation: Vec3::new(0.0, Player::EYE_HEIGHT, 0.0),
+                translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
                 rotation: camera_rotation,
             }
             template(move |_| Ok(camera_target.clone()))
