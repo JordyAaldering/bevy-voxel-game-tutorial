@@ -9,6 +9,7 @@ mod noise;
 mod physics;
 mod player;
 mod raycast;
+mod scene;
 mod screenshot;
 mod telemetry;
 mod voxel_atlas;
@@ -26,6 +27,7 @@ use crate::{
     physics::*,
     player::*,
     raycast::*,
+    scene::*,
     screenshot::*,
     telemetry::*,
     voxel::*,
@@ -209,19 +211,6 @@ fn game_view_captured(
     editor_state.is_game_view_active()
         && editor_state.is_game_view_visible()
         && cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn global_illumination() -> impl Scene {
-    bsn! {
-        DirectionalLight {
-            shadow_maps_enabled: true,
-            shadow_normal_bias: 1.0,
-            shadow_depth_bias: 0.05,
-        }
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
-        )
-    }
 }
 
 fn save_on_exit(

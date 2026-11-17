@@ -4,6 +4,7 @@ mod editor;
 mod inventory;
 mod meshdata;
 mod raycast;
+mod scene;
 mod screenshot;
 mod structure;
 mod voxel_atlas;

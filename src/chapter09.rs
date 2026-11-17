@@ -8,23 +8,25 @@ mod noise;
 mod physics;
 mod player;
 mod raycast;
+mod scene;
 mod screenshot;
 mod voxel_world;
 
 use crate::{
-    chunk::{Chunk, ChunkData, NeedsRemesh},
-    chunk_neighbors::ChunkNeighbors,
-    coords::{ChunkCoord, Direction, VoxelCoord, WorldCoord},
-    debug_gizmos::DebugGizmosPlugin,
-    gamemode::{GameModePlugin, is_gamemode_spectator, is_gamemode_survival},
-    meshdata::MeshData,
-    noise::NoiseSettings,
-    physics::PhysicsPlugin,
-    player::{Player, PlayerPlugin},
-    raycast::VoxelHit,
-    screenshot::ScreenshotPlugin,
-    voxel::VoxelType,
-    voxel_world::{ChunkMaterial, VoxelWorld, VoxelWorldPlugin, ATLAS_COLUMNS},
+    chunk::*,
+    chunk_neighbors::*,
+    coords::*,
+    debug_gizmos::*,
+    gamemode::*,
+    meshdata::*,
+    noise::*,
+    physics::*,
+    player::*,
+    raycast::*,
+    scene::*,
+    screenshot::*,
+    voxel::*,
+    voxel_world::*,
 };
 
 use bevy::{
@@ -124,19 +126,6 @@ fn main() -> AppExit {
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn global_illumination() -> impl Scene {
-    bsn! {
-        DirectionalLight {
-            shadow_maps_enabled: true,
-            shadow_normal_bias: 1.0,
-            shadow_depth_bias: 0.05,
-        }
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
-        )
-    }
 }
 
 fn spawn_world(

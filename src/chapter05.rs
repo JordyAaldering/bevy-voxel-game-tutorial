@@ -3,18 +3,20 @@ mod coords;
 mod debug_gizmos;
 mod meshdata;
 mod player;
+mod scene;
 mod screenshot;
 mod voxel_world;
 
 use crate::{
-    chunk::ChunkData,
-    coords::{ChunkCoord, Direction, VoxelCoord},
-    debug_gizmos::DebugGizmosPlugin,
-    meshdata::MeshData,
-    player::PlayerPlugin,
-    screenshot::ScreenshotPlugin,
-    voxel::VoxelType,
-    voxel_world::{ChunkMaterial, VoxelWorld, VoxelWorldPlugin},
+    chunk::*,
+    coords::*,
+    debug_gizmos::*,
+    meshdata::*,
+    player::*,
+    scene::*,
+    screenshot::*,
+    voxel::*,
+    voxel_world::*,
 };
 
 use bevy::{
@@ -64,19 +66,6 @@ fn main() -> AppExit {
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn global_illumination() -> impl Scene {
-    bsn! {
-        DirectionalLight {
-            shadow_maps_enabled: true,
-            shadow_normal_bias: 1.0,
-            shadow_depth_bias: 0.05,
-        }
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
-        )
-    }
 }
 
 fn spawn_world(

@@ -1,9 +1,11 @@
 mod player;
+mod scene;
 mod screenshot;
 
 use crate::{
-    player::PlayerPlugin,
-    screenshot::ScreenshotPlugin,
+    player::*,
+    scene::*,
+    screenshot::*,
 };
 
 use bevy::{
@@ -27,19 +29,6 @@ fn main() -> AppExit {
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
-}
-
-fn global_illumination() -> impl Scene {
-    bsn! {
-        DirectionalLight {
-            shadow_maps_enabled: true,
-            shadow_normal_bias: 1.0,
-            shadow_depth_bias: 0.05,
-        }
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
-        )
-    }
 }
 
 fn cube() -> impl Scene {
