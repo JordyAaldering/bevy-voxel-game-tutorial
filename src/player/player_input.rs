@@ -97,7 +97,7 @@ fn toggle_cursor(
     }
 }
 
-#[cfg(since12)]
+#[cfg(all(since12, until19))]
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -120,6 +120,37 @@ fn toggle_cursor(
     if mouse.just_pressed(MouseButton::Left)
         && editor_state.is_game_view_active()
         && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+    {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
+    }
+}
+
+#[cfg(since20)]
+fn toggle_cursor(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    editor_state: Res<crate::EditorState>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    inventory: Res<crate::CreativeInventoryState>,
+    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    // Release the cursor when escape is pressed, or when the game view is no longer the active tab
+    if keyboard.just_pressed(KeyCode::Escape)
+        || (
+            cursor.grab_mode != CursorGrabMode::None
+            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible())
+        )
+    {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+
+    // Capture only when clicking inside the game view
+    if mouse.just_pressed(MouseButton::Left)
+        && editor_state.is_game_view_active()
+        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+        && !inventory.open
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -266,7 +297,7 @@ fn draw_selected_voxel(
     gizmos.line(vertices[2], vertices[0], Color::WHITE);
 }
 
-#[cfg(since08)]
+#[cfg(all(since08, until19))]
 fn break_place_block(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -301,7 +332,50 @@ fn break_place_block(
             #[cfg(since19)]
             let voxel = crate::VoxelType::from_terrain(crate::TerrainType::Dirt);
             let neighbor = coord + direction;
-            world.set_voxel(&mut commands, neighbor, voxel);
+            if world.get_voxel(neighbor).is_some() {
+                world.set_voxel(&mut commands, neighbor, voxel);
+            }
+        }
+    }
+}
+
+#[cfg(since20)]
+fn break_place_block(
+    mut commands: Commands,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut world: ResMut<crate::VoxelWorld>,
+    camera: Single<&GlobalTransform, With<PlayerCamera>>,
+    hotbar: Res<crate::Hotbar>,
+) {
+    let do_break = mouse.just_pressed(MouseButton::Left);
+    let do_place = mouse.just_pressed(MouseButton::Right);
+    if !(do_break || do_place) {
+        return;
+    }
+
+    let origin = camera.translation();
+    let look = camera.forward();
+
+    if let Some(crate::VoxelHit { coord, direction }) = crate::raycast::find_voxel(
+        |pos| world.is_solid(pos),
+        origin,
+        look,
+        INTERACTION_DISTANCE,
+    ) {
+        info!("Hit {:?} at {:?}", coord, direction);
+        if do_break {
+            world.set_voxel(&mut commands, coord, crate::VoxelType::AIR);
+        } else /* if do_place */ {
+            let neighbor = coord + direction;
+            if world.get_voxel(neighbor).is_some() {
+                let voxel_type: crate::VoxelType = hotbar.selected().into();
+                if voxel_type == crate::VoxelType::AIR {
+                    // Can't place air, so don't do anything
+                    return;
+                }
+
+                world.set_voxel(&mut commands, neighbor, voxel_type);
+            }
         }
     }
 }

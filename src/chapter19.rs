@@ -259,28 +259,8 @@ mod voxel {
             (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_TERRAIN
         }
 
-        pub const fn is_block_id(self, id: BlockType) -> bool {
-            self.is_block() && (self.0 & Self::TYPE_MASK) == id as u16
-        }
-
         pub const fn is_terrain_id(self, id: TerrainType) -> bool {
             self.is_terrain() && (self.0 & Self::TYPE_MASK) == id as u16
-        }
-
-        pub const fn block_id(self) -> Option<u16> {
-            if self.is_block() {
-                Some(self.0 & Self::TYPE_MASK)
-            } else {
-                None
-            }
-        }
-
-        pub const fn terrain_id(self) -> Option<u16> {
-            if self.is_terrain() {
-                Some(self.0 & Self::TYPE_MASK)
-            } else {
-                None
-            }
         }
 
         pub fn unpack(self) -> Result<VoxelTypeItem, String> {

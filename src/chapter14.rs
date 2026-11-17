@@ -33,7 +33,7 @@ use crate::{
 
 use std::{fs, io, path::{Path, PathBuf}};
 
-use better_default::Default;
+use better_default::Default as BetterDefault;
 use bevy::{
     prelude::*,
     app::OnAppExitSystems,
@@ -69,7 +69,7 @@ impl Default for TerrainConfig {
     }
 }
 
-#[derive(Default, Resource, Reflect, InspectorOptions)]
+#[derive(BetterDefault, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct DebugGizmos {
     #[inspector()]

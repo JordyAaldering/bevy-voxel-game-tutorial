@@ -5,10 +5,9 @@ use crate::{
     TerrainType,
     VoxelType,
     VoxelTypeItem,
-    editor::EditorState,
+    EditorState,
     game_view_captured,
-    spawn_player,
-    voxel_atlas::VoxelAtlasAssets,
+    VoxelAtlasAssets,
 };
 
 use bevy::{
@@ -50,22 +49,24 @@ impl Plugin for CreativeInventoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CreativeInventoryState>()
             .init_resource::<HeldInventoryItem>()
-            .add_systems(
-                Startup,
-                (spawn_creative_inventory.after(spawn_player), spawn_inventory_pointer),
-            )
-            .add_systems(First, forward_inventory_pointer.in_set(PickingSystems::PostInput))
-            .add_systems(PreUpdate, sync_inventory_pointer
-                .after(PickingSystems::ProcessInput)
-                .before(PickingSystems::Backend))
-            .add_systems(
-                Update,
-                (
+            .add_systems(PostStartup, (
+                    spawn_creative_inventory, // .after(spawn_player),
+                    spawn_inventory_pointer,
+            ))
+            .add_systems(First, (
+                forward_inventory_pointer
+                    .in_set(PickingSystems::PostInput),
+            ))
+            .add_systems(PreUpdate, (
+                sync_inventory_pointer
+                    .after(PickingSystems::ProcessInput)
+                    .before(PickingSystems::Backend),
+            ))
+            .add_systems(Update, (
                     toggle_creative_inventory,
                     scroll_creative_inventory,
                     update_cursor_preview,
-                ),
-            );
+            ));
     }
 }
 
@@ -464,7 +465,9 @@ pub struct HotbarPlugin;
 impl Plugin for HotbarPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Hotbar>()
-            .add_systems(Startup, spawn_hotbar.after(spawn_player))
+            .add_systems(PostStartup, (
+                spawn_hotbar, // .after(spawn_player),
+            ))
             .add_systems(Update, (
                 (
                     hotbar_keyboard_input,

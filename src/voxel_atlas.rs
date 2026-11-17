@@ -12,7 +12,7 @@ use bevy::{
 
 const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
 
-#[cfg(since19)]
+#[cfg(since20)]
 #[derive(Resource)]
 pub struct VoxelAtlasAssets {
     pub image: Handle<Image>,

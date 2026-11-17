@@ -103,6 +103,16 @@ impl ChunkData {
         self.voxels = other.voxels;
     }
 
+    #[cfg(since19)]
+    pub fn set_voxel(&mut self, pos: VoxelCoord, voxel: VoxelType) {
+        self[pos] = voxel;
+        self.density[pos.index()] = if voxel.is_solid() {
+            Density::FULL
+        } else {
+            Density::EMPTY
+        };
+    }
+
     pub fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let neighbor_pos = pos + direction;
         if neighbor_pos.in_bounds() {

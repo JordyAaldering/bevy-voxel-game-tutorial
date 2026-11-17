@@ -235,7 +235,7 @@ impl VoxelWorld {
         }
     }
 
-    #[cfg(since13)]
+    #[cfg(all(since13, until18))]
     pub fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
         let voxel_pos = pos.local_coord();
         let chunk_pos = pos.chunk_coord();
@@ -254,6 +254,42 @@ impl VoxelWorld {
             self.notify_chunk(commands, chunk_pos + CompassQuadrant::South);
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
             self.notify_chunk(commands, chunk_pos + CompassQuadrant::West);
+        }
+    }
+
+    #[cfg(since19)]
+    pub fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
+        let voxel_pos = pos.local_coord();
+        let chunk_pos = pos.chunk_coord();
+        let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
+        Arc::make_mut(chunk).set_voxel(voxel_pos, voxel);
+
+        self.notify_chunk(commands, chunk_pos);
+
+        let x_offsets: &[i32] = if voxel_pos.x == 0 {
+            &[-1, 0]
+        } else if voxel_pos.x == CHUNK_WIDTH - 1 {
+            &[0, 1]
+        } else {
+            &[0]
+        };
+        let z_offsets: &[i32] = if voxel_pos.z == 0 {
+            &[-1, 0]
+        } else if voxel_pos.z == CHUNK_WIDTH - 1 {
+            &[0, 1]
+        } else {
+            &[0]
+        };
+
+        for &dz in z_offsets {
+            for &dx in x_offsets {
+                if dx != 0 || dz != 0 {
+                    self.notify_chunk(
+                        commands,
+                        ChunkCoord::new(chunk_pos.x + dx, chunk_pos.z + dz),
+                    );
+                }
+            }
         }
     }
 
@@ -301,6 +337,7 @@ impl VoxelWorld {
         let entity = commands.spawn((
             Name::new(format!("Chunk {coord}")),
             Transform::from_translation(coord.position()),
+            InheritedVisibility::default(),
             Chunk::new(coord),
         )).id();
 
@@ -347,8 +384,12 @@ impl VoxelWorld {
     }
 
     pub fn notify_neighbors(&self, commands: &mut Commands, coord: ChunkCoord) {
-        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                if dx != 0 || dz != 0 {
+                    self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
+                }
+            }
         }
     }
 }
@@ -423,7 +464,7 @@ fn setup_chunk_material(
     )));
 }
 
-#[cfg(since15)]
+#[cfg(all(since15, until19))]
 fn setup_chunk_material(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
@@ -433,6 +474,35 @@ fn setup_chunk_material(
         .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
     let texture = images.add(image);
     commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
+
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(texture),
+        perceptual_roughness: 0.9,
+        reflectance: 0.1,
+        ..default()
+    });
+
+    commands.insert_resource(ChunkMaterial(material));
+}
+
+#[cfg(since20)]
+fn setup_chunk_material(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let (atlas, image) = build_voxel_atlas(&mut images)
+        .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
+
+    let texture = images.add(image);
+    let layout = atlas_layouts.add(atlas.layout().clone());
+
+    commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
+    commands.insert_resource(VoxelAtlasAssets {
+        image: texture.clone(),
+        layout,
+    });
 
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
@@ -998,13 +1068,27 @@ fn start_chunk_generation_tasks(
             ChunkGenerationPhase::CaveGeneration => {
                 let data = Arc::clone(data);
                 let config = config.clone();
+                let coord = chunk.coord();
                 trace!("Generating {:?} for chunk {}", phase, chunk.coord());
                 pool.spawn(async move {
                     let mut generated = Box::new((*data).clone());
+                    let maps: Vec<Vec<f32>> = match phase {
+                        ChunkGenerationPhase::OreGeneration => config.ores.iter().enumerate()
+                            .map(|(index, ore)| ore.noise_settings().area3(
+                                config.ore_seed(index),
+                                coord.x,
+                                coord.z,
+                            ))
+                            .collect(),
+                        ChunkGenerationPhase::CaveGeneration => vec![
+                            config.caves.noise.area3(config.cave_seed(), coord.x, coord.z),
+                        ],
+                        _ => Vec::new(),
+                    };
                     match phase {
                         ChunkGenerationPhase::HeightGeneration => generate_chunk_height(&mut generated, &config),
-                        ChunkGenerationPhase::OreGeneration => generate_ores(&mut generated, &config),
-                        ChunkGenerationPhase::CaveGeneration => generate_caves(&mut generated, &config),
+                        ChunkGenerationPhase::OreGeneration => generate_ores(&mut generated, &config, &maps),
+                        ChunkGenerationPhase::CaveGeneration => generate_caves(&mut generated, &config, &maps[0]),
                         _ => unreachable!(),
                     }
                     ChunkGenerationResult::Data(phase, generated)
