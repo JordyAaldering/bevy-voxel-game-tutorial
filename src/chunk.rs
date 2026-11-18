@@ -434,7 +434,11 @@ mod binary_terrain_tests {
         let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
             panic!("missing positions")
         };
-        assert_eq!(positions.len(), CHUNK_WIDTH * CHUNK_WIDTH * 12);
+        let area: f32 = positions.chunks_exact(3).map(|triangle| {
+            let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(Vec3::from_array);
+            (b - a).cross(c - a).length() / 2.0
+        }).sum();
+        assert_eq!(area, (CHUNK_WIDTH * CHUNK_WIDTH) as f32);
         assert!(positions.iter().all(|position| position[1] == 3.0));
     }
 

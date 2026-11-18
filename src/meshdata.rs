@@ -178,13 +178,10 @@ impl<'a> MeshData<'a> {
                 current = next;
             }
 
-            let center = contour.iter().copied().sum::<Vec3>() / contour.len() as f32;
-            for i in 0..contour.len() {
-                let mut vertices = [center, contour[i], contour[(i + 1) % contour.len()]];
+            for [a, b, c] in triangulate_contour(&contour, corners[0].0, corners[6].0) {
+                let mut vertices = [contour[a], contour[b], contour[c]];
                 let mut normal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]).normalize_or_zero();
-                if normal == Vec3::ZERO {
-                    continue;
-                }
+                assert_ne!(normal, Vec3::ZERO, "Degenerate marching-cube triangle");
 
                 let centroid = (vertices[0] + vertices[1] + vertices[2]) / 3.0;
                 let solid_corner = (0..8)
@@ -249,6 +246,92 @@ impl<'a> MeshData<'a> {
             }
         }
     }
+}
+
+#[cfg(since19)]
+fn triangulate_contour(contour: &[Vec3], min: Vec3, max: Vec3) -> Vec<[usize; 3]> {
+    type Best = Option<(usize, f32, Vec<[usize; 3]>)>;
+
+    fn allowed_edge(contour: &[Vec3], min: Vec3, max: Vec3, a: usize, b: usize) -> bool {
+        if b == a + 1 || (a == 0 && b == contour.len() - 1) {
+            return true;
+        }
+        // An internal edge on a cube face would change the shared face contour.
+        !(0..3).any(|axis| {
+            contour[a][axis] == contour[b][axis]
+                && (contour[a][axis] == min[axis] || contour[a][axis] == max[axis])
+        })
+    }
+
+    fn search(
+        contour: &[Vec3],
+        min: Vec3,
+        max: Vec3,
+        pending: &mut Vec<(usize, usize)>,
+        triangles: &mut Vec<[usize; 3]>,
+        best: &mut Best,
+    ) {
+        let Some((a, b)) = pending.pop() else {
+            let normals: Vec<_> = triangles.iter().map(|&[a, b, c]| {
+                (contour[b] - contour[a]).cross(contour[c] - contour[a]).normalize()
+            }).collect();
+            let mut coplanar = 0;
+            let mut bending = 0.0;
+            for i in 0..triangles.len() {
+                for j in 0..i {
+                    if triangles[i].iter().filter(|vertex| triangles[j].contains(vertex)).count() != 2 {
+                        continue;
+                    }
+                    let dot = normals[i].dot(normals[j]).clamp(-1.0, 1.0);
+                    coplanar += usize::from(dot > 1.0 - 1e-6);
+                    bending += 1.0 - dot;
+                }
+            }
+            // Favor larger flat patches, then the least bending between the remaining faces.
+            if best.as_ref().is_none_or(|(best_coplanar, best_bending, _)| {
+                coplanar > *best_coplanar
+                    || (coplanar == *best_coplanar && bending < *best_bending - 1e-6)
+            }) {
+                *best = Some((coplanar, bending, triangles.clone()));
+            }
+            return;
+        };
+
+        if b > a + 1 {
+            for middle in a + 1..b {
+                if !allowed_edge(contour, min, max, a, middle)
+                    || !allowed_edge(contour, min, max, middle, b)
+                    || (contour[middle] - contour[a]).cross(contour[b] - contour[a]).length_squared() < 1e-10
+                {
+                    continue;
+                }
+                triangles.push([a, middle, b]);
+                pending.push((a, middle));
+                pending.push((middle, b));
+                search(contour, min, max, pending, triangles, best);
+                pending.pop();
+                pending.pop();
+                triangles.pop();
+            }
+        } else {
+            search(contour, min, max, pending, triangles, best);
+        }
+        pending.push((a, b));
+    }
+
+    if contour.len() == 3 {
+        return vec![[0, 1, 2]];
+    }
+    let mut best = None;
+    search(
+        contour,
+        min,
+        max,
+        &mut vec![(0, contour.len() - 1)],
+        &mut Vec::new(),
+        &mut best,
+    );
+    best.expect("Marching-cube contour has no valid triangulation").2
 }
 
 /// The vertices for a quad in the given direction.
@@ -427,6 +510,28 @@ mod binary_marching_tests {
                 assert!(cross.length_squared() > 1e-10, "mask {mask}");
                 assert!(cross.normalize().dot(Vec3::from_array(normals[0])) > 0.999, "mask {mask}");
                 assert!(vertices.iter().flatten().all(|v| (0.0..=1.0).contains(v)), "mask {mask}");
+                assert!(vertices.iter().all(|p| p.iter().filter(|&&v| v == 0.5).count() == 1
+                    && p.iter().all(|&v| v == 0.0 || v == 0.5 || v == 1.0)), "mask {mask}");
+            }
+        }
+    }
+
+    #[test]
+    fn adjacent_triangles_have_consistent_winding() {
+        for mask in 0u8..=255 {
+            let mesh = geometry(mask, Vec3::ZERO);
+            let triangles: Vec<_> = positions(&mesh).chunks_exact(3).collect();
+            for (i, first) in triangles.iter().enumerate() {
+                for second in &triangles[..i] {
+                    for a in 0..3 {
+                        for b in 0..3 {
+                            assert!(
+                                first[a] != second[b] || first[(a + 1) % 3] != second[(b + 1) % 3],
+                                "same directed edge in mask {mask}"
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -438,11 +543,57 @@ mod binary_marching_tests {
     }
 
     #[test]
+    fn l_contours_form_flat_and_planar_faces_without_center_vertices() {
+        for missing in 0..4 {
+            for upper in [false, true] {
+                let mask = (0b1111 ^ (1 << missing)) << if upper { 4 } else { 0 };
+                let mesh = geometry(mask, Vec3::ZERO);
+                let positions = positions(&mesh);
+                assert_eq!(positions.len(), 9, "mask {mask}");
+                assert!(positions.iter().all(|p| {
+                    p.iter().filter(|&&v| v == 0.5).count() == 1
+                        && p.iter().all(|&v| v == 0.0 || v == 0.5 || v == 1.0)
+                }), "mask {mask}");
+                let triangles: Vec<_> = positions.chunks_exact(3).collect();
+                assert_eq!(triangles.iter().filter(|triangle| triangle.iter().all(|p| p[1] == 0.5)).count(), 1, "mask {mask}");
+                let slopes: Vec<_> = triangles.iter()
+                    .filter(|triangle| !triangle.iter().all(|p| p[1] == 0.5))
+                    .map(|triangle| {
+                        let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(Vec3::from_array);
+                        (b - a).cross(c - a).normalize()
+                    })
+                    .collect();
+                assert_eq!(slopes.len(), 2);
+                assert!(slopes[0].dot(slopes[1]) > 0.99999, "mask {mask}");
+            }
+        }
+    }
+
+    #[test]
     fn diagonally_touching_solids_are_connected() {
         let mesh = geometry(0b0000_0101, Vec3::ZERO);
         let triangles: Vec<_> = positions(&mesh).chunks_exact(3).collect();
         assert!(!triangles.is_empty());
-        assert!(triangles.iter().all(|triangle| triangle[0] == triangles[0][0]));
+        let mut reached = vec![false; triangles.len()];
+        reached[0] = true;
+        loop {
+            let mut changed = false;
+            for i in 0..triangles.len() {
+                if reached[i] {
+                    continue;
+                }
+                if (0..triangles.len()).any(|j| {
+                    reached[j] && triangles[i].iter().filter(|vertex| triangles[j].contains(vertex)).count() >= 2
+                }) {
+                    reached[i] = true;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        assert!(reached.into_iter().all(|value| value));
     }
 
     #[test]
@@ -471,7 +622,7 @@ mod binary_marching_tests {
                     );
                     let (a, b) = (point(a), point(b));
                     if a != b {
-                        segments.insert(if a < b { (a, b) } else { (b, a) });
+                        segments.insert((a, b));
                     }
                 }
             }
@@ -481,9 +632,13 @@ mod binary_marching_tests {
 
     #[test]
     fn adjacent_cells_resolve_all_shared_faces_consistently() {
+        let left_meshes: Vec<_> = (0u8..=255).map(|mask| face_segments(&geometry(mask, Vec3::ZERO))).collect();
+        let right_meshes: Vec<_> = (0u8..=255).map(|mask| {
+            face_segments(&geometry(mask, Vec3::X)).into_iter().map(|(a, b)| (b, a)).collect::<BTreeSet<_>>()
+        }).collect();
         for face in 0u8..16 {
-            for left_other in [0u8, 0b0101, 0b1010, 0b1111] {
-                for right_other in [0u8, 0b0101, 0b1010, 0b1111] {
+            for left_other in 0u8..16 {
+                for right_other in 0u8..16 {
                     let mut left = 0u8;
                     let mut right = 0u8;
                     for (i, (l, r)) in [(1, 0), (2, 3), (6, 7), (5, 4)].into_iter().enumerate() {
@@ -501,8 +656,8 @@ mod binary_marching_tests {
                         }
                     }
                     assert_eq!(
-                        face_segments(&geometry(left, Vec3::ZERO)),
-                        face_segments(&geometry(right, Vec3::X)),
+                        left_meshes[left as usize],
+                        right_meshes[right as usize],
                         "face {face}, left {left_other}, right {right_other}",
                     );
                 }
