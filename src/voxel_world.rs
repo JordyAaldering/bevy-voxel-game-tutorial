@@ -1,7 +1,7 @@
 use crate::*;
 
 #[allow(unused_imports)]
-use std::{ops::{Index, IndexMut}, sync::Arc};
+use std::sync::Arc;
 
 use better_default::Default;
 #[allow(unused_imports)]
@@ -297,7 +297,7 @@ impl VoxelWorld {
 }
 
 #[cfg(since08)]
-impl Index<&Chunk> for VoxelWorld {
+impl std::ops::Index<&Chunk> for VoxelWorld {
     type Output = ChunkData;
 
     fn index(&self, chunk: &Chunk) -> &Self::Output {
@@ -307,7 +307,7 @@ impl Index<&Chunk> for VoxelWorld {
 }
 
 #[cfg(since08)]
-impl IndexMut<&Chunk> for VoxelWorld {
+impl std::ops::IndexMut<&Chunk> for VoxelWorld {
     fn index_mut(&mut self, chunk: &Chunk) -> &mut Self::Output {
         Arc::make_mut(
             self.chunks.get_mut(&chunk.coord())
@@ -687,18 +687,15 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
 
             let pos = VoxelCoord::new(x, height, z);
             chunk[pos] = VoxelType::from_terrain(column.surface);
-            chunk.density[pos.index()] = Density::FULL;
 
             for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = VoxelType::from_terrain(column.subsurface);
-                chunk.density[pos.index()] = Density::FULL;
             }
 
             for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = VoxelType::from_terrain(TerrainType::Stone);
-                chunk.density[pos.index()] = Density::FULL;
             }
         }
     }
@@ -721,7 +718,6 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig, noise: &[f32]) {
                     }
                     #[cfg(since19)] {
                         chunk[pos] = VoxelType::AIR;
-                        chunk.density[pos.index()] = Density::EMPTY;
                     }
                 }
             }
@@ -768,7 +764,6 @@ fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig, maps: &[Vec<f32>])
                     ore.contains_noise(y as i32, map[coord.index()]).then_some(ore.voxel)
                 }) {
                     chunk[coord] = VoxelType::from_terrain(ore);
-                    chunk.density[coord.index()] = Density::FULL;
                 }
             }
         }
@@ -932,8 +927,7 @@ fn poll_chunk_generation_tasks(
             ChunkGenerationResult::Data(phase, generated) => {
                 let data = &mut world[chunk];
                 assert_eq!(data.generation_phase, phase);
-                data.voxels = generated.voxels;
-                data.density = generated.density;
+                data.set_voxels(*generated);
                 data.generation_phase = data.generation_phase.next();
                 world.notify_chunk(&mut commands, chunk.coord());
                 world.notify_neighbors(&mut commands, chunk.coord());
@@ -1248,7 +1242,6 @@ impl VoxelWorld {
             let local = coord.local_coord();
             let voxel_type: VoxelType = voxel.voxel.into();
             chunk[local] = voxel_type;
-            chunk.density[local.index()] = if voxel_type.is_solid() { Density::FULL } else { Density::EMPTY };
         }
     }
 }

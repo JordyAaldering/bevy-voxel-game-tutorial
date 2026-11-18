@@ -331,7 +331,7 @@ fn terrain_ray(world: &VoxelWorld, axis: Axis, sample: Vec2, start: f32, end: f3
 #[cfg(all(test, since19))]
 mod tests {
     use super::*;
-    use crate::{ChunkCoord, ChunkData, ChunkGenerationPhase, Density, TerrainType, VoxelType, CHUNK_WIDTH};
+    use crate::{ChunkCoord, ChunkData, ChunkGenerationPhase, TerrainType, VoxelType, CHUNK_WIDTH};
     use std::sync::Arc;
 
     /// Creates a ready, empty three-by-three chunk world for collision tests.
@@ -386,9 +386,6 @@ mod tests {
         assert!((position.y - ray.0).abs() < 1e-5);
         assert!(player.grounded);
         assert_eq!(player.velocity.y, 0.0);
-        for chunk in world.chunks.values_mut() {
-            Arc::make_mut(chunk).density.fill(Density::FULL);
-        }
         assert_eq!(terrain_ray(&world, Axis::Y, vec2(10.75, 10.75), 5.0, 2.0), Some(ray));
     }
 

@@ -3,7 +3,6 @@ mod chunk;
 mod chunk_neighbors;
 mod coords;
 mod debug_gizmos;
-mod density;
 mod editor;
 mod gamemode;
 mod inventory;
@@ -27,7 +26,6 @@ use crate::{
     chunk_neighbors::*,
     coords::*,
     debug_gizmos::*,
-    density::*,
     editor::*,
     gamemode::*,
     inventory::*,

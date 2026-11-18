@@ -52,12 +52,10 @@ pub struct NeedsDespawn;
 pub struct ChunkData {
     #[allow(unused)]
     pub coord: ChunkCoord,
-    pub voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
-    #[cfg(since19)]
-    pub density: [Density; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     #[cfg(since08)]
     #[cfg_attr(since14, wincode(skip))]
-    pub entity: Option<Entity>,
+    entity: Option<Entity>,
     #[cfg(since13)]
     pub generation_phase: ChunkGenerationPhase,
 }
@@ -82,7 +80,7 @@ impl ChunkData {
         }
     }
 
-    #[cfg(all(since13, until18))]
+    #[cfg(since13)]
     pub fn set_voxels(&mut self, other: ChunkData) {
         self.voxels = other.voxels;
     }
@@ -90,11 +88,6 @@ impl ChunkData {
     #[cfg(since19)]
     pub fn set_voxel(&mut self, pos: VoxelCoord, voxel: VoxelType) {
         self[pos] = voxel;
-        self.density[pos.index()] = if voxel.is_solid() {
-            Density::FULL
-        } else {
-            Density::EMPTY
-        };
     }
 
     pub fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
@@ -127,8 +120,6 @@ impl ChunkData {
             voxels: [VoxelType::Air; _],
             #[cfg(since19)]
             voxels: [VoxelType::AIR; _],
-            #[cfg(since19)]
-            density: [Density::EMPTY; _],
             entity: Some(entity),
             #[cfg(since13)]
             generation_phase: ChunkGenerationPhase::HeightGeneration,
@@ -140,7 +131,11 @@ impl ChunkData {
     }
 
     pub fn entity(&self) -> Option<Entity> {
-        return self.entity;
+        self.entity
+    }
+
+    pub fn has_entity(&self) -> bool {
+        self.entity.is_some()
     }
 
     pub fn set_entity(&mut self, entity: Entity) {
@@ -457,7 +452,6 @@ mod binary_terrain_tests {
         let mut images = Assets::<Image>::default();
         let (atlas, _) = build_voxel_atlas(&mut images).unwrap();
         let first = chunk.build_terrain_mesh(&neighbors, &atlas);
-        chunk.density.fill(Density::FULL);
         let second = chunk.build_terrain_mesh(&neighbors, &atlas);
         let Some(VertexAttributeValues::Float32x3(positions)) = first.attribute(Mesh::ATTRIBUTE_POSITION) else {
             panic!("missing positions")

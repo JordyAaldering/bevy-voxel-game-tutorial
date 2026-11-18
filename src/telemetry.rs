@@ -96,7 +96,7 @@ fn collect_chunk_telemetry(
 ) {
     let mut snapshot = ChunkTelemetry::default();
     for chunk in world.chunks.values() {
-        if chunk.entity.is_none() {
+        if !chunk.has_entity() {
             snapshot.unloaded += 1;
             continue;
         }
@@ -108,7 +108,7 @@ fn collect_chunk_telemetry(
             ChunkGenerationPhase::GenerateStructures => &mut snapshot.generate_structures,
             ChunkGenerationPhase::MeshGeneration => &mut snapshot.mesh_generation,
             ChunkGenerationPhase::Done
-                if chunk.entity.is_some_and(|entity| tasks.contains(entity)) =>
+                if chunk.entity().is_some_and(|e| tasks.contains(e)) =>
             {
                 &mut snapshot.mesh_generation
             }
