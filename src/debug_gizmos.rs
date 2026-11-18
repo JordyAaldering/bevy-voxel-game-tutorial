@@ -13,8 +13,9 @@ use bevy_inspector_egui::prelude::*;
 pub struct DebugGizmosPlugin {
     /// Whether mesh wireframes are shown.
     pub wireframe: bool,
-    // /// Whether chunk borders are shown.
-    // pub chunk_borders: bool,
+    /// Whether chunk borders are shown.
+    #[default(true)]
+    pub chunk_borders: bool,
     /// Whether the chunk spawn radius is drawn around the player.
     #[default(true)]
     pub chunk_spawn_radius: bool,
@@ -43,10 +44,39 @@ impl Plugin for DebugGizmosPlugin {
         #[cfg(since12)]
         app.register_type::<DebugGizmos>()
             .insert_resource(DebugGizmos {
-                chunk_borders: false,
+                chunk_borders: self.chunk_borders,
                 chunk_spawn_radius: self.chunk_spawn_radius,
             })
-            .add_systems(Update, draw_chunk_spawn_radius);
+            .add_systems(Update, (
+                draw_chunk_borders,
+                draw_chunk_spawn_radius,
+            ));
+    }
+}
+
+fn draw_chunk_borders(
+    settings: Res<DebugGizmos>,
+    world: Res<VoxelWorld>,
+    mut gizmos: Gizmos,
+) {
+    if !settings.chunk_borders {
+        return;
+    }
+
+    for (coord, chunk) in &world.chunks {
+        if chunk.has_entity() {
+            let mut sw = coord.position();
+            sw.y = CHUNK_HEIGHT as f32 + 0.01;
+            gizmos.lineloop(
+                [
+                    sw,
+                    sw + vec3(0.0, 0.0, CHUNK_WIDTH as f32),
+                    sw + vec3(CHUNK_WIDTH as f32, 0.0, CHUNK_WIDTH as f32),
+                    sw + vec3(CHUNK_WIDTH as f32, 0.0, 0.0),
+                ],
+                Color::srgb(1.0, 1.0, 1.0),
+            );
+        }
     }
 }
 
