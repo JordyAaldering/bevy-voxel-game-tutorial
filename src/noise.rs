@@ -1,10 +1,11 @@
 #[cfg(since18)]
-pub mod gpu;
-pub mod opensimplex2s;
-pub mod voronoi;
+mod gpu;
+mod opensimplex2s;
+mod voronoi;
 
 #[cfg(since18)]
-pub use gpu::GpuPlugin;
+#[allow(unused_imports)]
+pub use gpu::{GpuBackend, GpuPlugin};
 
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH};
 

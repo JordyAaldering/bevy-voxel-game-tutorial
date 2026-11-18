@@ -31,6 +31,9 @@ pub(super) struct CameraSettings {
     #[inspector(min = 0.1, max = 20.0)]
     pub move_speed: f32,
     #[cfg(since07)]
+    /// TODO: jump strength belongs to the physics plugin, not the player settings.
+    /// Move it there. The player is just responsible for setting a flag that it wants to jump,
+    /// and the physics plugin should handle the actual jump logic.
     #[default(7.0)]
     #[inspector(min = 0.1, max = 20.0)]
     pub jump_strenght: f32,

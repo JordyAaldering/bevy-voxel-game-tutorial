@@ -224,6 +224,7 @@ mod voxel {
         }
     }
 
+    #[allow(dead_code)]
     impl VoxelType {
         /// The lower 13 bits are the type, the upper 3 bits are the category.
         const TYPE_MASK: u16 = 0x1FFF;

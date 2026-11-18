@@ -26,7 +26,7 @@ pub(super) fn register(app: &mut App) {
     #[cfg(since08)]
     app.add_systems(Update, (
         draw_selected_voxel,
-        break_place_block,
+        break_place_block.run_if(crate::is_focused),
     ));
 
     #[cfg(until06)]

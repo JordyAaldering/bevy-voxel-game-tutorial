@@ -20,22 +20,6 @@ pub struct Chunk {
 }
 
 #[cfg(since19)]
-#[derive(Clone, Copy)]
-struct TerrainSample {
-    position: Vec3,
-    density: Density,
-    terrain: Option<TerrainType>,
-    variant_seed: u32,
-}
-
-#[cfg(since19)]
-impl TerrainSample {
-    fn marching_density(self) -> Density {
-        self.terrain.map_or(Density::EMPTY, |_| self.density)
-    }
-}
-
-#[cfg(since19)]
 #[derive(Component)]
 pub struct ChunkMeshes {
     pub voxels: Entity,
@@ -98,7 +82,7 @@ impl ChunkData {
         }
     }
 
-    #[cfg(since13)]
+    #[cfg(all(since13, until18))]
     pub fn set_voxels(&mut self, other: ChunkData) {
         self.voxels = other.voxels;
     }
@@ -233,90 +217,77 @@ impl ChunkData {
         neighbors: &ChunkNeighbors,
         atlas: &VoxelAtlas,
     ) -> Mesh {
-        let mut terrain_mesh = MeshData::new(atlas.layout());
-        let north = neighbors.north.as_deref().expect("Terrain meshing requires the north neighbor");
-        let north_east = neighbors.north_east.as_deref().expect("Terrain meshing requires the north-east neighbor");
-        let east = neighbors.east.as_deref().expect("Terrain meshing requires the east neighbor");
-
-        for z in 0..CHUNK_WIDTH {
-            for y in 0..CHUNK_HEIGHT {
-                for x in 0..CHUNK_WIDTH {
-                    let samples = self.terrain_cell_corners(
-                        north,
-                        north_east,
-                        east,
-                        VoxelCoord::new(x, y, z),
-                    );
-                    terrain_mesh.add_marching_cube(
-                        samples.map(|sample| (sample.position, sample.marching_density())),
-                        |corner, direction| {
-                            let sample = samples[corner];
-                            sample.terrain.map(|terrain| {
-                                atlas.texture(
-                                    VoxelType::from_terrain(terrain),
-                                    direction,
-                                    sample.variant_seed,
-                                )
-                            })
-                        },
-                    );
-                }
-            }
-        }
-
-        terrain_mesh.build()
+        // self.build_density_terrain_mesh(neighbors, atlas)
+        self.build_binary_terrain_mesh(neighbors, atlas)
     }
 
     #[cfg(since19)]
-    fn terrain_cell_corners(
-        &self,
-        north: &ChunkData,
-        north_east: &ChunkData,
-        east: &ChunkData,
-        origin: VoxelCoord,
-    ) -> [TerrainSample; 8] {
-        // Cells belong to the chunk containing their minimum x/z sample. The top
-        // layer samples empty space above the world; the bottom remains open.
+    fn build_binary_terrain_mesh(&self, neighbors: &ChunkNeighbors, atlas: &VoxelAtlas) -> Mesh {
         const OFFSETS: [(usize, usize, usize); 8] = [
             (0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1),
             (0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1),
         ];
 
-        OFFSETS.map(|(dx, dy, dz)| {
-            let x = origin.x + dx;
-            let y = origin.y + dy;
-            let z = origin.z + dz;
-            let position = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+        let north = neighbors.north.as_deref().expect("Terrain meshing requires the north neighbor");
+        let north_east = neighbors.north_east.as_deref().expect("Terrain meshing requires the north-east neighbor");
+        let east = neighbors.east.as_deref().expect("Terrain meshing requires the east neighbor");
+
+        let sample = |x: usize, y: usize, z: usize| {
             if y == CHUNK_HEIGHT {
-                TerrainSample {
-                    position,
-                    density: Density::EMPTY,
-                    terrain: None,
-                    variant_seed: 0,
-                }
-            } else {
-                let source = match (x == CHUNK_WIDTH, z == CHUNK_WIDTH) {
-                    (false, false) => self,
-                    (false, true) => north,
-                    (true, true) => north_east,
-                    (true, false) => east,
-                };
-                let local = VoxelCoord::new(x % CHUNK_WIDTH, y, z % CHUNK_WIDTH);
-                let voxel = source[local];
-                let terrain = match voxel.unpack().expect("Chunk contains an invalid voxel") {
-                    VoxelTypeItem::Terrain(terrain) => Some(terrain),
-                    VoxelTypeItem::Air | VoxelTypeItem::Block(_) => None,
-                };
-                TerrainSample {
-                    position,
-                    density: source.density[local.index()],
-                    terrain,
-                    variant_seed: variant_seed(source.coord, local),
+                return None;
+            }
+
+            let chunk = match (x == CHUNK_WIDTH, z == CHUNK_WIDTH) {
+                (false, false) => self,
+                (false, true) => north,
+                (true, false) => east,
+                (true, true) => north_east,
+            };
+
+            Some((chunk, VoxelCoord::new(x % CHUNK_WIDTH, y, z % CHUNK_WIDTH)))
+        };
+
+        let index = |x: usize, y: usize, z: usize| {
+            x + (CHUNK_WIDTH + 1) * (y + (CHUNK_HEIGHT + 1) * z)
+        };
+
+        let mut terrain_field = vec![false; (CHUNK_WIDTH + 1) * (CHUNK_HEIGHT + 1) * (CHUNK_WIDTH + 1)];
+        for z in 0..=CHUNK_WIDTH {
+            for y in 0..=CHUNK_HEIGHT {
+                for x in 0..=CHUNK_WIDTH {
+                    terrain_field[index(x, y, z)] = sample(x, y, z)
+                        .is_some_and(|(chunk, pos)| chunk[pos].is_terrain());
                 }
             }
-        })
-    }
+        }
 
+        let mut mesh = MeshData::new(atlas.layout());
+        for z in 0..CHUNK_WIDTH {
+            for y in 0..CHUNK_HEIGHT {
+                for x in 0..CHUNK_WIDTH {
+                    let corners = OFFSETS.map(|(dx, dy, dz)| {
+                        let (x, y, z) = (x + dx, y + dy, z + dz);
+                        (vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5), terrain_field[index(x, y, z)])
+                    });
+
+                    if corners.iter().all(|corner| corner.1)
+                        || corners.iter().all(|corner| !corner.1)
+                    {
+                        continue;
+                    }
+
+                    let samples = OFFSETS.map(|(dx, dy, dz)| sample(x + dx, y + dy, z + dz));
+                    mesh.add_binary_marching_cube(corners, |corner, direction| {
+                        let (chunk, pos) = samples[corner]
+                            .expect("A solid terrain sample must reference a voxel");
+                        let voxel = chunk[pos];
+                        Some(atlas.texture(voxel, direction, variant_seed(chunk.coord, pos)))
+                    });
+                }
+            }
+        }
+        mesh.build()
+    }
 
     fn is_face_visible(
         &self,
@@ -327,6 +298,10 @@ impl ChunkData {
         use bevy::math::CompassQuadrant;
 
         if let Some(neighbor) = self.get_neighbor_voxel(voxel_pos, direction) {
+            #[cfg(since19)]
+            if neighbor.is_terrain() {
+                return true;
+            }
             return neighbor.is_transparent();
         }
 
@@ -347,8 +322,12 @@ impl ChunkData {
             CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
         };
 
-        neighbor_chunk[neighbor_pos]
-            .is_transparent()
+        let neighbor = neighbor_chunk[neighbor_pos];
+        #[cfg(since19)]
+        if neighbor.is_terrain() {
+            return true;
+        }
+        neighbor.is_transparent()
     }
 }
 
@@ -422,4 +401,108 @@ fn variant_seed(chunk_pos: ChunkCoord, voxel_pos: VoxelCoord) -> u32 {
     h ^= h >> 15;
     h = h.wrapping_mul(0x2C1B_3C6D);
     h ^ (h >> 13)
+}
+
+#[cfg(all(test, since19))]
+mod binary_terrain_tests {
+    use super::*;
+    use bevy::mesh::VertexAttributeValues;
+    use std::sync::Arc;
+
+    #[test]
+    fn flat_terrain_keeps_a_flat_surface_across_chunk_edges() {
+        let coord = ChunkCoord::new(0, 0);
+        let mut chunks = bevy::platform::collections::HashMap::default();
+        for z in -1..=1 {
+            for x in -1..=1 {
+                let coord = ChunkCoord::new(x, z);
+                let mut chunk = ChunkData::new(coord, Entity::PLACEHOLDER);
+                for z in 0..CHUNK_WIDTH {
+                    for x in 0..CHUNK_WIDTH {
+                        for y in 0..3 {
+                            chunk[VoxelCoord::new(x, y, z)] = VoxelType::from_terrain(TerrainType::Stone);
+                        }
+                    }
+                }
+                chunks.insert(coord, Arc::new(chunk));
+            }
+        }
+        let mut images = Assets::<Image>::default();
+        let (atlas, _) = build_voxel_atlas(&mut images).unwrap();
+        let neighbors = ChunkNeighbors::from(coord, &chunks);
+        let mesh = chunks[&coord].build_terrain_mesh(&neighbors, &atlas);
+        let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("missing positions")
+        };
+        assert_eq!(positions.len(), CHUNK_WIDTH * CHUNK_WIDTH * 12);
+        assert!(positions.iter().all(|position| position[1] == 3.0));
+    }
+
+    #[test]
+    fn terrain_mesh_ignores_density_and_uses_neighboring_chunks() {
+        let coord = ChunkCoord::new(0, 0);
+        let mut chunk = ChunkData::new(coord, Entity::PLACEHOLDER);
+        let voxel = VoxelType::from_terrain(TerrainType::Stone);
+        let edge = VoxelCoord::new(CHUNK_WIDTH - 1, 10, CHUNK_WIDTH - 1);
+        chunk[edge] = voxel;
+        let mut chunks = bevy::platform::collections::HashMap::default();
+        for coord in [ChunkCoord::new(1, 0), ChunkCoord::new(0, 1), ChunkCoord::new(1, 1)] {
+            chunks.insert(coord, Arc::new(ChunkData::new(coord, Entity::PLACEHOLDER)));
+        }
+        let diagonal = ChunkCoord::new(1, 1);
+        let diagonal_pos = VoxelCoord::new(0, 10, 0);
+        Arc::make_mut(chunks.get_mut(&diagonal).unwrap())[diagonal_pos] = voxel;
+        let neighbors = ChunkNeighbors::from(coord, &chunks);
+        let mut images = Assets::<Image>::default();
+        let (atlas, _) = build_voxel_atlas(&mut images).unwrap();
+        let first = chunk.build_terrain_mesh(&neighbors, &atlas);
+        chunk.density.fill(Density::FULL);
+        let second = chunk.build_terrain_mesh(&neighbors, &atlas);
+        let Some(VertexAttributeValues::Float32x3(positions)) = first.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("missing positions")
+        };
+        assert!(!positions.is_empty());
+        assert_eq!(first.attribute(Mesh::ATTRIBUTE_POSITION), second.attribute(Mesh::ATTRIBUTE_POSITION));
+
+        Arc::make_mut(chunks.get_mut(&diagonal).unwrap())[diagonal_pos] = VoxelType::AIR;
+        let without_diagonal = chunk.build_terrain_mesh(&ChunkNeighbors::from(coord, &chunks), &atlas);
+        assert_ne!(first.attribute(Mesh::ATTRIBUTE_POSITION), without_diagonal.attribute(Mesh::ATTRIBUTE_POSITION));
+
+        Arc::make_mut(chunks.get_mut(&diagonal).unwrap())[diagonal_pos] = VoxelType::from_block(BlockType::Log);
+        let diagonal_block = chunk.build_terrain_mesh(&ChunkNeighbors::from(coord, &chunks), &atlas);
+        assert_eq!(diagonal_block.attribute(Mesh::ATTRIBUTE_POSITION), without_diagonal.attribute(Mesh::ATTRIBUTE_POSITION));
+    }
+
+    #[test]
+    fn blocks_do_not_affect_terrain_meshes() {
+        let coord = ChunkCoord::new(0, 0);
+        let mut chunk = ChunkData::new(coord, Entity::PLACEHOLDER);
+        let mut chunks = bevy::platform::collections::HashMap::default();
+        for coord in [ChunkCoord::new(1, 0), ChunkCoord::new(0, 1), ChunkCoord::new(1, 1)] {
+            chunks.insert(coord, Arc::new(ChunkData::new(coord, Entity::PLACEHOLDER)));
+        }
+        let neighbors = ChunkNeighbors::from(coord, &chunks);
+        let mut images = Assets::<Image>::default();
+        let (atlas, _) = build_voxel_atlas(&mut images).unwrap();
+        let terrain_pos = VoxelCoord::new(10, 10, 10);
+        let block_pos = VoxelCoord::new(11, 10, 10);
+        chunk[block_pos] = VoxelType::from_block(BlockType::Log);
+        let blocks_only = chunk.build_terrain_mesh(&neighbors, &atlas);
+        let Some(VertexAttributeValues::Float32x3(positions)) = blocks_only.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("missing positions")
+        };
+        assert!(positions.is_empty());
+
+        chunk[terrain_pos] = VoxelType::from_terrain(TerrainType::Stone);
+        let next_to_block = chunk.build_terrain_mesh(&neighbors, &atlas);
+        let Some(VertexAttributeValues::Float32x3(positions)) = next_to_block.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("missing positions")
+        };
+        assert!(!positions.is_empty());
+        chunk[block_pos] = VoxelType::AIR;
+        let next_to_air = chunk.build_terrain_mesh(&neighbors, &atlas);
+        for attribute in [Mesh::ATTRIBUTE_POSITION, Mesh::ATTRIBUTE_NORMAL, Mesh::ATTRIBUTE_UV_0] {
+            assert_eq!(next_to_block.attribute(attribute), next_to_air.attribute(attribute));
+        }
+    }
 }

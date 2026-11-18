@@ -13,3 +13,17 @@ A voxel is no longer just _on_ or _off_, but has a _density_ value.
 The density determines how solid the voxel is, and is a float between 0 and 1.
 As you might remember, we typically want to group data by type (_SoA_ vs _AoS_); so we add a new array of floats to the `Chunk` class, which stores the density of each voxel.
 For each voxel type, we then define with which method it should be rendered: either as a cube or with marching cubes.
+
+## Implementation steps
+
+1. Split each chunk's generated mesh into a block mesh and a terrain mesh, with separate child entities and mesh assets.
+2. Keep the existing density array and update it when voxels change. The density-based terrain mesher remains available, and terrain collision still uses density.
+3. Build a `(width + 1) x (height + 1) x (width + 1)` boolean field at voxel centers. Terrain is solid; air and blocks are empty.
+4. Fill the field's positive chunk boundaries from the north, east, and north-east neighbors. Treat samples above the world as empty.
+5. For each marching cell, collect its eight samples and skip cells that are entirely solid or empty. Each cell belongs to the chunk containing its minimum-coordinate sample.
+6. Find the midpoint of each edge where the samples differ, connect the crossings into contours, and resolve ambiguous faces consistently between cells.
+7. Triangulate each contour, calculate outward normals, and choose a terrain texture and atlas UVs for each triangle.
+8. Generate and update both chunk meshes together, notifying neighboring chunks when boundary edits affect their meshes.
+9. Test the binary marching cases, shared faces, chunk boundaries, and the exclusion of blocks and density from the terrain field.
+
+The center-sampled surface can extend into neighboring air voxels. Face-diagonal contacts are connected, but corner-only contacts can remain separate.

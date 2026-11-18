@@ -266,16 +266,17 @@ impl VoxelWorld {
 
         self.notify_chunk(commands, chunk_pos);
 
-        let x_offsets: &[i32] = if voxel_pos.x == 0 {
+        // Border edits can change neighboring voxel meshes and diagonal marching cells.
+        let x_offsets: &[i32] = if voxel_pos.x <= 1 {
             &[-1, 0]
-        } else if voxel_pos.x == CHUNK_WIDTH - 1 {
+        } else if voxel_pos.x >= CHUNK_WIDTH - 2 {
             &[0, 1]
         } else {
             &[0]
         };
-        let z_offsets: &[i32] = if voxel_pos.z == 0 {
+        let z_offsets: &[i32] = if voxel_pos.z <= 1 {
             &[-1, 0]
-        } else if voxel_pos.z == CHUNK_WIDTH - 1 {
+        } else if voxel_pos.z >= CHUNK_WIDTH - 2 {
             &[0, 1]
         } else {
             &[0]
@@ -1136,7 +1137,7 @@ fn start_chunk_generation_tasks(
     world: Res<VoxelWorld>,
     config: Res<WorldConfig>,
     atlas: Res<SharedVoxelAtlas>,
-    mut noise_backend: ResMut<noise::gpu::GpuBackend>,
+    mut noise_backend: ResMut<crate::GpuBackend>,
     chunks: Query<(Entity, &Chunk), (With<NeedsGenerationCheck>, Without<ChunkGenerationTask>)>,
 ) {
     let pool = AsyncComputeTaskPool::get();
