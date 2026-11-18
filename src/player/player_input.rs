@@ -21,12 +21,11 @@ const MAX_PITCH: f32 = 1.4;
 const INTERACTION_DISTANCE: f32 = 5.0;
 
 pub(super) fn register(app: &mut App) {
-    app.add_systems(Update, toggle_cursor);
+    app.add_systems(PreUpdate, toggle_cursor);
 
     #[cfg(since08)]
     app.add_systems(Update, (
         draw_selected_voxel,
-        break_place_block.run_if(crate::is_focused),
     ));
 
     #[cfg(until06)]
@@ -41,6 +40,7 @@ pub(super) fn register(app: &mut App) {
     app.add_systems(Update, (
         (
             player_look,
+            #[cfg(since08)] break_place_block,
             move_spectator.run_if(crate::is_gamemode_spectator),
             move_survival.run_if(crate::is_gamemode_survival),
         ).run_if(crate::is_focused),
@@ -50,6 +50,7 @@ pub(super) fn register(app: &mut App) {
     app.add_systems(Update, (
         (
             player_look,
+            break_place_block,
             move_spectator.run_if(crate::is_gamemode_spectator),
             move_survival.run_if(crate::is_gamemode_survival),
         ).run_if(crate::is_focused.and_then(crate::game_view_captured)),

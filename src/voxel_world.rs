@@ -22,10 +22,10 @@ pub const ATLAS_ROWS: u32 = 10;
 #[cfg(since13)]
 const SUBSURFACE_DEPTH: usize = 2;
 
-#[cfg(all(since10, until16))]
-const CHUNK_LOAD_RADIUS: i32 = 4;
-#[cfg(since17)]
+#[cfg(since10)]
 const CHUNK_LOAD_RADIUS: i32 = 5;
+#[cfg(since10)]
+const CHUNK_DESPAWN_PADDING: f32 = CHUNK_WIDTH as f32 * 0.5;
 
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
@@ -363,7 +363,7 @@ impl VoxelWorld {
     /// This triggers the chunk to advance to the next generation phase, if applicable.
     pub fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
         if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity()) {
-            info!("Notifying chunk {} of voxel data change", coord);
+            trace!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
     }
@@ -577,12 +577,15 @@ fn spawn_chunks_around_player(
     #[cfg(until12)] config: Res<crate::TerrainConfig>,
 ) {
     let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
+    let player_position = player.translation.xz();
+    let load_radius_chunks = chunk_load_radius();
+    let load_radius = load_radius_chunks as f32 * CHUNK_WIDTH as f32;
 
-    for dz in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
-        for dx in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
+    for dz in -load_radius_chunks..=load_radius_chunks {
+        for dx in -load_radius_chunks..=load_radius_chunks {
             let coord = ChunkCoord::new(center.x + dx, center.z + dz);
 
-            if world.is_loaded(coord) {
+            if !chunk_is_in_range(coord, player_position, load_radius) || world.is_loaded(coord) {
                 continue;
             }
 
@@ -602,11 +605,11 @@ fn retire_distant_chunks(
     player: Single<&Transform, With<Player>>,
     chunks: Query<(Entity, &Chunk, Has<NeedsDespawn>)>,
 ) {
-    let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
+    let player_position = player.translation.xz();
+    let despawn_radius = CHUNK_LOAD_RADIUS as f32 * CHUNK_WIDTH as f32 + CHUNK_DESPAWN_PADDING;
 
     for (entity, chunk, retired) in &chunks {
-        let in_range = (chunk.coord().x - center.x).abs() <= CHUNK_LOAD_RADIUS
-            && (chunk.coord().z - center.z).abs() <= CHUNK_LOAD_RADIUS;
+        let in_range = chunk_is_in_range(chunk.coord(), player_position, despawn_radius);
 
         if !in_range && !retired {
             commands.entity(entity).insert(NeedsDespawn);
@@ -614,6 +617,22 @@ fn retire_distant_chunks(
             commands.entity(entity).remove::<NeedsDespawn>();
         }
     }
+}
+
+#[cfg(since10)]
+fn chunk_load_radius() -> i32 {
+    #[cfg(until12)]
+    let generation_padding = 0;
+    #[cfg(since13)]
+    let generation_padding = ChunkGenerationPhase::total_padding();
+    CHUNK_LOAD_RADIUS + generation_padding
+}
+
+#[cfg(since10)]
+fn chunk_is_in_range(coord: ChunkCoord, player_position: Vec2, radius: f32) -> bool {
+    let half_chunk = CHUNK_WIDTH as f32 * 0.5;
+    let center = coord.position().xz() + Vec2::splat(half_chunk);
+    player_position.distance_squared(center) <= radius * radius
 }
 
 #[cfg(since10)]

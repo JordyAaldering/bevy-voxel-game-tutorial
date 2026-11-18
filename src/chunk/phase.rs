@@ -62,6 +62,17 @@ impl ChunkGenerationPhase {
             Self::Done => NeighborRequirement::NONE,
         }
     }
+
+    /// The combined neighbor padding needed for every phase to complete.
+    pub fn total_padding() -> i32 {
+        let mut padding = 0;
+        let mut phase = Self::HeightGeneration;
+        while phase != Self::Done {
+            padding += phase.neighbor_requirement().radius;
+            phase = phase.next();
+        }
+        padding
+    }
 }
 
 /// The set of neighboring chunks that must be ready before a generation phase can run.

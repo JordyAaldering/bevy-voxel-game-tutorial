@@ -5,13 +5,20 @@ However, what we want is for the world to be infinitely generated.
 Of course, we cannot generate the entire, infinite world all at once.
 Instead, we should only generate chunks that are within some distance to the player.
 
-Currently, we naively generate all chunks in a 3x3 square around the player.
-It would be better to generate chunks in a circular radius instead, so implement that now if you want.
+Only generate chunks whose centre lies within a circular radius of the player's
+actual world position. Use a loop over a square region to find candidate chunk
+coordinates, then filter candidates by comparing the distance from the player's
+`xz` position to the centre of each chunk. Converting the radius from chunks to
+world units keeps it independent of the chunk dimensions.
 
 ## Disabling meshes
 
 If the player has been exploring for a while, many chunks/meshes will still be active that the player can't even see.
 Whenever a visible mesh is some distance away from the player, we disable that chunk.
+The despawn radius should be slightly larger than the spawn radius. This
+hysteresis prevents a chunk at the boundary from being repeatedly spawned and
+despawned while the player moves back and forth. A padding of half a chunk is a
+good starting point, stored in a separate constant so it can be tuned.
 
 Just like the `NeedsRemesh` component, we add a `NeedsDespawn`.
 

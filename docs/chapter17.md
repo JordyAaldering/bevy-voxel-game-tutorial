@@ -31,6 +31,10 @@ For caves we can use the 3D simplex noise algorithm.
    - `HeightGeneration` and `CaveGeneration` need nothing, because noise is a pure function of the world position, so the chunk only reads and writes itself.
    - `GenerateStructures` needs radius 1 including diagonals, because a tree near a corner can overflow into the diagonal chunk.
    - `MeshGeneration` needs radius 1 including diagonals: only touching chunks matter for hiding faces, but diagonal chunks can still write structures into this chunk.
+   These requirements form a dependency chain. `ChunkGenerationPhase::total_padding()`
+   adds their radii together, and the world loader adds that total to the visible
+   chunk radius. This keeps enough supporting chunks loaded for edge chunks to
+   reach `Done` without shrinking the visible radius.
 3. **Check readiness in one place.** The separate `neighbors_ready_for_structures` and `neighbors_ready_for_mesh` are replaced by `VoxelWorld::neighbors_ready_for(coord, phase)`, which checks every offset of the phase's requirement.
 4. **Make 3D noise available.** `NoiseSettings::area3` batches a chunk-sized volume using the same fractal settings as `sample3`, in voxel-index order.
    Climate and biome-height maps are likewise sampled in 2D batches to produce a chunk's columns.
