@@ -27,4 +27,4 @@ For each voxel type, we then define with which method it should be rendered: eit
 9. Test the binary marching cases, shared faces, chunk boundaries, and the exclusion of blocks and density from the terrain field.
 10. Share marching-cell triangles between rendering and player collision. Collision samples the feet and head at the player's center and the sides at several body points; the sampled surface matches the mesh.
 
-The center-sampled surface can extend into neighboring air voxels. Face-diagonal contacts are connected, but corner-only contacts can remain separate.
+The center-sampled surface can extend into neighboring air voxels. The `CONNECT_DIAGONALS` constant in `marching.rs` controls whether face-diagonal contacts are connected; corner-only contacts can remain separate. Rendering and physics use the same setting.

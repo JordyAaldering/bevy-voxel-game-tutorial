@@ -1,5 +1,8 @@
 use bevy::prelude::*;
 
+/// Whether terrain samples touching diagonally across a face are connected.
+const CONNECT_DIAGONALS: bool = true;
+
 pub const OFFSETS: [(usize, usize, usize); 8] = [
     (0, 0, 0),
     (1, 0, 0),
@@ -79,7 +82,7 @@ pub fn triangles(corners: [(Vec3, bool); 8], mut visit: impl FnMut(Triangle)) {
             [_, _, _, _] => {
                 // Both cells sharing a face must resolve its ambiguity identically.
                 for i in 0..4 {
-                    if !solid[face[i]] {
+                    if solid[face[i]] != CONNECT_DIAGONALS {
                         connect(edges[(i + 3) % 4], edges[i]);
                     }
                 }
@@ -273,4 +276,28 @@ fn triangulate_contour(contour: &[Vec3], min: Vec3, max: Vec3) -> Vec<[usize; 3]
     );
     best.expect("Marching-cube contour has no valid triangulation")
         .2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn face_diagonal_follows_configured_connectivity() {
+        let corners = OFFSETS.map(|(x, y, z)| {
+            (vec3(x as f32, y as f32, z as f32), y == 0 && x == z)
+        });
+        let mut edges = Vec::new();
+        triangles(corners, |triangle| {
+            for i in 0..3 {
+                edges.push((triangle.vertices[i], triangle.vertices[(i + 1) % 3]));
+            }
+        });
+        let a = vec3(0.5, 0.0, 0.0);
+        let connected = vec3(1.0, 0.0, 0.5);
+        let disconnected = vec3(0.0, 0.0, 0.5);
+        let has_edge = |b| edges.iter().any(|&(u, v)| (u == a && v == b) || (u == b && v == a));
+        assert_eq!(has_edge(connected), CONNECT_DIAGONALS);
+        assert_eq!(has_edge(disconnected), !CONNECT_DIAGONALS);
+    }
 }

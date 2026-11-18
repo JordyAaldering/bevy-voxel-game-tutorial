@@ -347,33 +347,6 @@ mod binary_marching_tests {
     }
 
     #[test]
-    fn diagonally_touching_solids_are_connected() {
-        let mesh = geometry(0b0000_0101, Vec3::ZERO);
-        let triangles: Vec<_> = positions(&mesh).chunks_exact(3).collect();
-        assert!(!triangles.is_empty());
-        let mut reached = vec![false; triangles.len()];
-        reached[0] = true;
-        loop {
-            let mut changed = false;
-            for i in 0..triangles.len() {
-                if reached[i] {
-                    continue;
-                }
-                if (0..triangles.len()).any(|j| {
-                    reached[j] && triangles[i].iter().filter(|vertex| triangles[j].contains(vertex)).count() >= 2
-                }) {
-                    reached[i] = true;
-                    changed = true;
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
-        assert!(reached.into_iter().all(|value| value));
-    }
-
-    #[test]
     fn samples_without_material_do_not_produce_triangles() {
         let atlas = TextureAtlasLayout::from_grid(UVec2::splat(16), 1, 1, None, None);
         let mut data = MeshData::new(&atlas);
