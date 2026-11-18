@@ -8,7 +8,7 @@ pub fn global_illumination() -> impl Scene {
             shadow_depth_bias: 0.05,
         }
         Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.0, 0.0)
+            Quat::from_euler(EulerRot::XYZ, 6.0, -6.0, 0.0)
         )
     }
 }
