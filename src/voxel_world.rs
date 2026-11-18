@@ -25,7 +25,7 @@ const SUBSURFACE_DEPTH: usize = 2;
 #[cfg(since10)]
 const CHUNK_LOAD_RADIUS: i32 = 5;
 #[cfg(since10)]
-const CHUNK_DESPAWN_PADDING: f32 = CHUNK_WIDTH as f32 * 0.5;
+pub const CHUNK_DESPAWN_PADDING: f32 = CHUNK_WIDTH as f32 * 0.5;
 
 #[derive(Default)]
 pub struct VoxelWorldPlugin;
@@ -579,13 +579,14 @@ fn spawn_chunks_around_player(
     let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
     let player_position = player.translation.xz();
     let load_radius_chunks = chunk_load_radius();
-    let load_radius = load_radius_chunks as f32 * CHUNK_WIDTH as f32;
 
     for dz in -load_radius_chunks..=load_radius_chunks {
         for dx in -load_radius_chunks..=load_radius_chunks {
             let coord = ChunkCoord::new(center.x + dx, center.z + dz);
 
-            if !chunk_is_in_range(coord, player_position, load_radius) || world.is_loaded(coord) {
+            if !chunk_is_in_spawn_radius(coord, player_position)
+                || world.is_loaded(coord)
+            {
                 continue;
             }
 
@@ -606,10 +607,9 @@ fn retire_distant_chunks(
     chunks: Query<(Entity, &Chunk, Has<NeedsDespawn>)>,
 ) {
     let player_position = player.translation.xz();
-    let despawn_radius = CHUNK_LOAD_RADIUS as f32 * CHUNK_WIDTH as f32 + CHUNK_DESPAWN_PADDING;
 
     for (entity, chunk, retired) in &chunks {
-        let in_range = chunk_is_in_range(chunk.coord(), player_position, despawn_radius);
+        let in_range = chunk_is_in_despawn_radius(chunk.coord(), player_position);
 
         if !in_range && !retired {
             commands.entity(entity).insert(NeedsDespawn);
@@ -620,7 +620,7 @@ fn retire_distant_chunks(
 }
 
 #[cfg(since10)]
-fn chunk_load_radius() -> i32 {
+pub fn chunk_load_radius() -> i32 {
     #[cfg(until12)]
     let generation_padding = 0;
     #[cfg(since13)]
@@ -629,10 +629,44 @@ fn chunk_load_radius() -> i32 {
 }
 
 #[cfg(since10)]
-fn chunk_is_in_range(coord: ChunkCoord, player_position: Vec2, radius: f32) -> bool {
+pub fn chunk_is_in_despawn_radius(
+    coord: ChunkCoord,
+    player_position: Vec2,
+) -> bool {
     let half_chunk = CHUNK_WIDTH as f32 * 0.5;
     let center = coord.position().xz() + Vec2::splat(half_chunk);
-    player_position.distance_squared(center) <= radius * radius
+    position_is_in_despawn_radius(center, player_position)
+}
+
+#[cfg(since10)]
+pub fn chunk_is_in_spawn_radius(coord: ChunkCoord, player_position: Vec2) -> bool {
+    let half_chunk = CHUNK_WIDTH as f32 * 0.5;
+    let center = coord.position().xz() + Vec2::splat(half_chunk);
+    position_is_in_spawn_radius(center, player_position)
+}
+
+#[cfg(since10)]
+pub fn position_is_in_despawn_radius(position: Vec2, player_position: Vec2) -> bool {
+    let radius =
+        chunk_load_radius() as f32 * CHUNK_WIDTH as f32 + CHUNK_DESPAWN_PADDING;
+    player_position.distance_squared(position) <= radius * radius
+}
+
+#[cfg(since10)]
+pub fn position_is_in_spawn_radius(position: Vec2, player_position: Vec2) -> bool {
+    const SQUARENESS: f32 = 0.5;
+
+    let radius = chunk_load_radius() as f32 * CHUNK_WIDTH as f32;
+    let offset = (player_position - position).abs() / radius;
+
+    if SQUARENESS == 0.0 {
+        offset.length_squared() <= 1.0
+    } else if SQUARENESS == 1.0 {
+        offset.max_element() <= 1.0
+    } else {
+        let exponent = 2.0 / (1.0 - SQUARENESS);
+        (offset.x.powf(exponent) + offset.y.powf(exponent)).powf(1.0 / exponent) <= 1.0
+    }
 }
 
 #[cfg(since10)]
