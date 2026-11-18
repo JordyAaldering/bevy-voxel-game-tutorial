@@ -17,7 +17,7 @@ For each voxel type, we then define with which method it should be rendered: eit
 ## Implementation steps
 
 1. Split each chunk's generated mesh into a block mesh and a terrain mesh, with separate child entities and mesh assets.
-2. Keep the existing density array and update it when voxels change. Terrain collision still uses density, but terrain meshing does not.
+2. Keep the existing density array and update it when voxels change. Binary terrain meshing and collision do not use it.
 3. Build a `(width + 1) x (height + 1) x (width + 1)` boolean field at voxel centers. Terrain is solid; air and blocks are empty.
 4. Fill the field's positive chunk boundaries from the north, east, and north-east neighbors. Treat samples above the world as empty.
 5. For each marching cell, collect its eight samples and skip cells that are entirely solid or empty. Each cell belongs to the chunk containing its minimum-coordinate sample.
@@ -25,5 +25,6 @@ For each voxel type, we then define with which method it should be rendered: eit
 7. Triangulate each contour using only edge crossings, preferring coplanar adjacent triangles for flatter surfaces. Calculate outward normals, and choose a terrain texture and atlas UVs for each triangle.
 8. Generate and update both chunk meshes together, notifying neighboring chunks when boundary edits affect their meshes.
 9. Test the binary marching cases, shared faces, chunk boundaries, and the exclusion of blocks and density from the terrain field.
+10. Share marching-cell triangles between rendering and player collision. Collision samples the feet and head at the player's center and the sides at several body points; the sampled surface matches the mesh.
 
 The center-sampled surface can extend into neighboring air voxels. Face-diagonal contacts are connected, but corner-only contacts can remain separate.

@@ -294,22 +294,6 @@ impl VoxelWorld {
         }
     }
 
-    #[cfg(since19)]
-    pub fn get_density(&self, pos: WorldCoord) -> Option<Density> {
-        if !pos.in_bounds() {
-            return None;
-        }
-
-        let chunk_pos = pos.chunk_coord();
-        self.get_chunk(chunk_pos)
-            .filter(|chunk| chunk.generation_phase >= ChunkGenerationPhase::MeshGeneration
-                && self.neighbors_ready_for(chunk_pos, ChunkGenerationPhase::MeshGeneration))
-            .map(|chunk| {
-                let voxel_pos = pos.local_coord();
-                chunk.density[voxel_pos.index()]
-            })
-    }
-
 }
 
 #[cfg(since08)]

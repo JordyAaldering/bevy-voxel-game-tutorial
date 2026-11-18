@@ -7,6 +7,7 @@ mod density;
 mod editor;
 mod gamemode;
 mod inventory;
+mod marching;
 mod meshdata;
 mod noise;
 mod ore;

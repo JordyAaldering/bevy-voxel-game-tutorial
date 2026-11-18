@@ -6,6 +6,7 @@ mod debug_gizmos;
 mod density;
 mod editor;
 mod gamemode;
+mod marching;
 mod meshdata;
 mod noise;
 mod ore;

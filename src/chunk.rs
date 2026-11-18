@@ -223,10 +223,7 @@ impl ChunkData {
 
     #[cfg(since19)]
     fn build_binary_terrain_mesh(&self, neighbors: &ChunkNeighbors, atlas: &VoxelAtlas) -> Mesh {
-        const OFFSETS: [(usize, usize, usize); 8] = [
-            (0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1),
-            (0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1),
-        ];
+        use crate::marching::OFFSETS;
 
         let north = neighbors.north.as_deref().expect("Terrain meshing requires the north neighbor");
         let north_east = neighbors.north_east.as_deref().expect("Terrain meshing requires the north-east neighbor");
