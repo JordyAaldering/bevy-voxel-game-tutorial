@@ -147,11 +147,11 @@ fn player(
         Projection::Perspective(PerspectiveProjection {
             fov: 0.9
         })
-        Msaa::Off
         InheritedVisibility
         Children [
             PlayerCamera
             Camera3d
+            Msaa::Off
             Transform {
                 translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
                 rotation: camera_rotation,
@@ -178,11 +178,11 @@ fn player(
         Projection::Perspective(PerspectiveProjection {
             fov: 0.9
         })
-        Msaa::Off
         InheritedVisibility
         Children [
             PlayerCamera
             Camera3d
+            Msaa::Off
             Transform {
                 translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
                 rotation: camera_rotation,

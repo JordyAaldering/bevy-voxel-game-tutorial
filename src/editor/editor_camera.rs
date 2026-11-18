@@ -29,6 +29,7 @@ pub fn spawn_editor_camera(
     commands.spawn((
         EditorCamera,
         Camera3d::default(),
+        Msaa::Off,
         Camera { is_active: false, ..default() },
         PanOrbitCamera::default(),
         editor_state.editor_camera_target(),
