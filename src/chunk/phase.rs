@@ -64,6 +64,7 @@ impl ChunkGenerationPhase {
     }
 
     /// The combined neighbor padding needed for every phase to complete.
+    #[cfg(since13)]
     pub fn total_padding() -> i32 {
         let mut padding = 0;
         let mut phase = Self::HeightGeneration;

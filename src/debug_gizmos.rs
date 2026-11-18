@@ -60,38 +60,56 @@ fn draw_chunk_spawn_radius(
         return;
     }
 
-    const SEGMENTS: usize = 128;
-
     let center = player.translation;
-    let center_2d = center.xz();
-    let boundary = |predicate: fn(Vec2, Vec2) -> bool| {
-        (0..SEGMENTS).map(move |index| {
-            let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-            let direction = Vec2::from_angle(angle);
-            let mut inside = 0.0;
-            let mut outside = CHUNK_WIDTH as f32;
-            while predicate(center_2d + direction * outside, center_2d) {
-                outside *= 2.0;
-            }
-            for _ in 0..24 {
-                let distance = (inside + outside) * 0.5;
-                if predicate(center_2d + direction * distance, center_2d) {
-                    inside = distance;
-                } else {
-                    outside = distance;
-                }
-            }
-            let point = center_2d + direction * inside;
-            vec3(point.x, center.y + 0.1, point.y)
-        })
-    };
 
     gizmos.lineloop(
-        boundary(position_is_in_despawn_radius),
-        Color::srgb(0.2, 0.7, 1.0),
-    );
-    gizmos.lineloop(
-        boundary(position_is_in_spawn_radius),
+        chunk_radius_boundary(center, position_is_in_despawn_radius),
         Color::srgb(1.0, 0.3, 0.2),
     );
+
+    gizmos.lineloop(
+        chunk_radius_boundary(center, position_is_in_spawn_radius),
+        Color::srgb(0.2, 0.7, 1.0),
+    );
+
+    #[cfg(since13)]
+    {
+        let spawn_radius = chunk_load_radius() as f32 * CHUNK_WIDTH as f32;
+        let visible_radius = spawn_radius - ChunkGenerationPhase::total_padding() as f32 * CHUNK_WIDTH as f32;
+        gizmos.lineloop(
+            chunk_radius_boundary(center, move |position, player| {
+                position.distance_squared(player) <= visible_radius * visible_radius
+            }),
+            Color::srgb(0.3, 1.0, 0.2),
+        );
+    }
+}
+
+#[cfg(since12)]
+fn chunk_radius_boundary(
+    center: Vec3,
+    predicate: impl Fn(Vec2, Vec2) -> bool,
+) -> impl Iterator<Item = Vec3> {
+    const SEGMENTS: usize = 128;
+
+    let center_2d = center.xz();
+    (0..SEGMENTS).map(move |index| {
+        let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+        let direction = Vec2::from_angle(angle);
+        let mut inside = 0.0;
+        let mut outside = CHUNK_WIDTH as f32;
+        while predicate(center_2d + direction * outside, center_2d) {
+            outside *= 2.0;
+        }
+        for _ in 0..24 {
+            let distance = (inside + outside) * 0.5;
+            if predicate(center_2d + direction * distance, center_2d) {
+                inside = distance;
+            } else {
+                outside = distance;
+            }
+        }
+        let point = center_2d + direction * inside;
+        vec3(point.x, center.y + 0.1, point.y)
+    })
 }
