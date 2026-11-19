@@ -23,7 +23,7 @@ pub const ATLAS_ROWS: u32 = 10;
 const SUBSURFACE_DEPTH: usize = 2;
 
 #[cfg(since10)]
-const CHUNK_LOAD_RADIUS: i32 = 5;
+const CHUNK_LOAD_RADIUS: i32 = 7;
 #[cfg(since10)]
 pub const CHUNK_DESPAWN_PADDING: f32 = CHUNK_WIDTH as f32 * 0.5;
 

@@ -1,5 +1,7 @@
 # Marching cubes
 
+![](img/chapter19.gif)
+
 A terrain of voxels is not very pretty.
 We can smooth it out by changing the way we generate meshes.
 One way to do this is with _marching cubes_.

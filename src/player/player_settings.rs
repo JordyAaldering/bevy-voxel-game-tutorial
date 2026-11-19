@@ -27,7 +27,7 @@ pub(super) struct CameraSettings {
     #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
     pub mouse_sensitivity: f32,
-    #[default(10.0)]
+    #[default(15.0)]
     #[inspector(min = 0.1, max = 20.0)]
     pub move_speed: f32,
     #[cfg(since07)]

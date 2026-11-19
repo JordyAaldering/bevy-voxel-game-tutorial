@@ -3,7 +3,7 @@
 
 # Building a Voxel Game with Rust and Bevy
 
-![](docs/img/chapter17.png)
+![](img/chapter19.gif)
 
 Learn how to build a voxel game using Rust and the Bevy game engine.
 
@@ -56,3 +56,6 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 16. [Trees, finally!](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Trees%2C-finally%21)
 17. [Pump up the noise](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Pump-up-the-noise)
 18. [Shader programming](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Shader-programming)
+19. [Marching cubes](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Marching-cubes)
+20. [Inventory](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Inventory)
+21. [Structure editor](https://github.com/JordyAaldering/bevy-voxel-game-tutorial/wiki/Structure-editor)

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::BufWriter,
     path::PathBuf,
@@ -17,7 +18,7 @@ use gif::{Encoder, Frame, Repeat};
 pub struct ScreenshotPlugin {
     #[default("docs/img".into())]
     pub out_dir: PathBuf,
-    #[default(15.0)]
+    #[default(10.0)]
     pub gif_fps: f32,
 }
 
@@ -65,7 +66,8 @@ fn take_screenshot(
         return Ok(());
     }
 
-    fs::create_dir_all(&config.out_dir)?;
+    fs::create_dir_all(&config.out_dir)
+        .context(format!("Failed to create {}", config.out_dir.display()))?;
 
     let secs = get_system_seconds();
     let path = config.out_dir.join(format!("screenshot_{secs}.png"));
@@ -139,39 +141,41 @@ fn process_gif(
 
     let first = frames.first()
         .context(format!("No frames found in {}", tmp_dir.display()))?;
-    let first_image = image::open(first)?;
+    let mut first_image = image::open(first)?.to_rgba8();
 
     let width = u16::try_from(first_image.width())?;
     let height = u16::try_from(first_image.height())?;
+    let delay = (100.0 / config.gif_fps).round() as u16;
+
+    // A global palette works best when the first frame is representative of the recording.
+    let mut first_frame = Frame::from_rgba_speed(width, height, first_image.as_mut(), 10);
+    let palette = first_frame.palette.take()
+        .context("Failed to generate GIF palette")?;
+    first_frame.delay = delay;
 
     let secs = get_system_seconds();
     let path = config.out_dir.join(format!("output_{secs}.gif"));
     let file = File::create(&path)?;
 
-    let delay = (100.0 / config.gif_fps).round() as u16;
-    let mut encoder = Encoder::new(
-        BufWriter::new(file),
-        width,
-        height,
-        &[],
-    )?;
+    let mut encoder = Encoder::new(BufWriter::new(file), width, height, &palette)?;
     encoder.set_repeat(Repeat::Infinite)?;
+    encoder.write_frame(&first_frame)?;
 
-    for path in frames {
-        let mut image = image::open(&path)?
-            .to_rgba8();
+    for path in frames.into_iter().skip(1) {
+        let image = image::open(&path)?.to_rgba8();
 
         if image.dimensions() != (width as u32, height as u32) {
-            return Err(BevyError::error(
-                format!("Frame {} has unexpected dimensions", path.display())
-            ));
+            return Err(BevyError::error(format!(
+                "Frame {} has unexpected dimensions",
+                path.display()
+            )));
         }
 
-        let mut frame = Frame::from_rgba_speed(
+        let mut frame = Frame::from_indexed_pixels(
             width,
             height,
-            image.as_mut(),
-            10,
+            quantize_to_palette(&image, &palette),
+            None,
         );
         frame.delay = delay;
         encoder.write_frame(&frame)?;
@@ -183,6 +187,26 @@ fn process_gif(
 
     next_state.set(GifRecordingState::Available);
     Ok(())
+}
+
+fn quantize_to_palette(image: &image::RgbaImage, palette: &[u8]) -> Vec<u8> {
+    let mut cache = HashMap::new();
+    image.pixels()
+        .map(|pixel| {
+            let color = [pixel[0], pixel[1], pixel[2]];
+            *cache.entry(color).or_insert_with(|| {
+                palette.chunks_exact(3)
+                    .enumerate()
+                    .min_by_key(|(_, entry)| {
+                        let r = i32::from(color[0]) - i32::from(entry[0]);
+                        let g = i32::from(color[1]) - i32::from(entry[1]);
+                        let b = i32::from(color[2]) - i32::from(entry[2]);
+                        r * r + g * g + b * b
+                    })
+                    .map_or(0, |(index, _)| index as u8)
+            })
+        })
+        .collect()
 }
 
 fn get_system_seconds() -> u64 {
