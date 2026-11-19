@@ -14,7 +14,7 @@ use bevy::{
     prelude::*,
     tasks::IoTaskPool,
     time::common_conditions::on_timer,
-    diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin},
+    diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
 };
 use tokio::sync::watch;
 
@@ -56,7 +56,12 @@ impl Plugin for TelemetryPlugin {
             .spawn(Compat::new(run_server(receiver)))
             .detach();
 
-        app.insert_resource(TelemetryPublisher(sender))
+        app.add_plugins((
+                FrameTimeDiagnosticsPlugin::default(),
+                EntityCountDiagnosticsPlugin::default(),
+                SystemInformationDiagnosticsPlugin::default(),
+            ))
+            .insert_resource(TelemetryPublisher(sender))
             .init_resource::<ChunkTelemetry>()
             .add_systems(Update,
                 (
