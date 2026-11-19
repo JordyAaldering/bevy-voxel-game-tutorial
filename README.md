@@ -3,7 +3,7 @@
 
 # Building a Voxel Game with Rust and Bevy
 
-![](img/chapter19.gif)
+![](docs/img/chapter19.gif)
 
 Learn how to build a voxel game using Rust and the Bevy game engine.
 
