@@ -74,7 +74,7 @@ fn draw_chunk_borders(
                     sw + vec3(CHUNK_WIDTH as f32, 0.0, CHUNK_WIDTH as f32),
                     sw + vec3(CHUNK_WIDTH as f32, 0.0, 0.0),
                 ],
-                Color::srgb(1.0, 1.0, 1.0),
+                chunk.generation_phase.color(),
             );
         }
     }
