@@ -5,6 +5,7 @@ mod meshdata;
 mod player;
 mod scene;
 mod screenshot;
+mod settings;
 mod voxel_world;
 
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
     player::*,
     scene::*,
     screenshot::*,
+    settings::*,
     voxel::*,
     voxel_world::*,
 };
@@ -97,6 +99,7 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
             DebugGizmosPlugin::default(),
             PlayerPlugin::default(),
             VoxelWorldPlugin::default(),

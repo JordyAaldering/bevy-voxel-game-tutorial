@@ -2,12 +2,14 @@ mod debug_gizmos;
 mod player;
 mod scene;
 mod screenshot;
+mod settings;
 
 use crate::{
     debug_gizmos::*,
     player::*,
     scene::*,
     screenshot::*,
+    settings::*,
 };
 
 use bevy::{
@@ -16,7 +18,7 @@ use bevy::{
 };
 use bevy_inspector_egui::{
     bevy_egui::prelude::*,
-    quick::WorldInspectorPlugin,
+    quick::{ResourceInspectorPlugin, WorldInspectorPlugin},
 };
 
 fn main() -> AppExit {
@@ -26,6 +28,8 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
+            ResourceInspectorPlugin::<InputSettings>::default(),
             DebugGizmosPlugin { wireframe: true, ..default() },
             PlayerPlugin::default(),
         ))

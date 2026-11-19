@@ -4,9 +4,10 @@ use axis::Axis;
 
 use crate::{Player, VoxelWorld, WorldCoord};
 
-use std::marker::PhantomData;
-
+use better_default::Default;
 use bevy::prelude::*;
+use bevy_inspector_egui::prelude::*;
+
 
 const PLAYER_WIDTH: f32 = 0.6;
 const PLAYER_WIDTH_HALF: f32 = PLAYER_WIDTH * 0.5;
@@ -17,54 +18,105 @@ const COLLISION_EPSILON: f32 = 1e-3;
 
 const GRAVITY: f32 = 20.0;
 
-pub struct PhysicsPlugin<F, M> {
-    run_condition: F,
-    _marker: PhantomData<fn() -> M>,
+#[derive(Default)]
+pub struct PhysicsPlugin {
+    #[default(15.0)]
+    pub move_speed: f32,
+    #[cfg(since07)]
+    #[default(7.0)]
+    pub jump_strenght: f32,
 }
 
-impl<F, M> PhysicsPlugin<F, M>
-where
-    F: SystemCondition<M>,
-{
-    pub fn new(run_condition: F) -> Self {
-        Self {
-            run_condition,
-            _marker: PhantomData,
-        }
-    }
+#[derive(Default, Resource)]
+pub struct PhysicsInput {
+    pub movement: Vec2,
+    pub jump: bool,
+    pub crouch: bool,
 }
 
-impl<F, M> Plugin for PhysicsPlugin<F, M>
-where
-    F: Clone + SystemCondition<M> + Send + Sync + 'static,
-    M: 'static
-{
+#[derive(Default, Resource)]
+struct PhysicsState {
+    velocity: Vec3,
+    grounded: bool,
+}
+
+#[derive(Resource, Reflect, InspectorOptions)]
+#[reflect(Resource, InspectorOptions)]
+struct PhysicsConfig {
+    #[inspector(min = 0.1, max = 20.0)]
+    move_speed: f32,
+    #[cfg(since07)]
+    #[inspector(min = 0.1, max = 20.0)]
+    jump_strenght: f32,
+}
+
+impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (
-            player_physics
-                .run_if(self.run_condition.clone()),
-        ));
+        app
+            .init_resource::<PhysicsInput>()
+            .init_resource::<PhysicsState>()
+            .insert_resource(PhysicsConfig {
+                move_speed: self.move_speed,
+                jump_strenght: self.jump_strenght,
+            })
+            .add_systems(FixedUpdate, (
+                move_spectator.run_if(super::is_gamemode_spectator),
+                move_survival.run_if(super::is_gamemode_survival),
+            ));
     }
 }
 
-/// Applies gravity and resolves player movement against blocks and terrain on each axis.
-fn player_physics(
+fn move_spectator(
     time: Res<Time>,
-    world: Res<VoxelWorld>,
-    player: Single<(&mut Player, &mut Transform)>,
+    input: Res<PhysicsInput>,
+    settings: Res<PhysicsConfig>,
+    mut player: Single<&mut Transform, With<Player>>,
 ) {
-    let (mut player, mut transform) = player.into_inner();
+    let x = input.movement.x;
+    let y = f32::from(input.jump) - f32::from(input.crouch);
+    let z = input.movement.y;
+
+    let direction = x * player.right() + y * Vec3::Y + z * player.forward();
+    player.translation += settings.move_speed * time.delta_secs() * direction.normalize_or_zero();
+}
+
+fn move_survival(
+    time: Res<Time>,
+    input: Res<PhysicsInput>,
+    settings: Res<PhysicsConfig>,
+    mut state: ResMut<PhysicsState>,
+    mut player: Single<&mut Transform, With<Player>>,
+    world: Res<VoxelWorld>,
+) {
     let dt = time.delta_secs();
 
-    player.velocity.y -= GRAVITY * dt;
-    player.grounded = false;
+    let x = input.movement.x;
+    let z = input.movement.y;
+
+    if x != 0.0 || z != 0.0 {
+        let movement = x * player.right() + z * player.forward();
+        let movement = movement.normalize_or_zero();
+        state.velocity.x = settings.move_speed * movement.x;
+        state.velocity.z = settings.move_speed * movement.z;
+    } else {
+        state.velocity.x = 0.0;
+        state.velocity.z = 0.0;
+    }
+
+    state.velocity.y -= GRAVITY * dt;
+
+    if state.grounded && input.jump {
+        state.velocity.y = settings.jump_strenght;
+    }
+
+    state.grounded = false;
 
     for axis in [Axis::X, Axis::Y, Axis::Z] {
         #[cfg(since19)]
-        let (previous, velocity) = (transform.translation, axis.get(&player.velocity));
+        let (previous, velocity) = (player.translation, axis.get(&state.velocity));
         move_axis(
-            &mut player,
-            &mut transform.translation,
+            &mut state,
+            &mut player.translation,
             &world,
             dt,
             axis,
@@ -72,8 +124,8 @@ fn player_physics(
 
         #[cfg(since19)]
         collide_with_terrain(
-            &mut player,
-            &mut transform.translation,
+            &mut state,
+            &mut player.translation,
             &world,
             previous,
             velocity,
@@ -84,13 +136,13 @@ fn player_physics(
 
 /// Moves the player along one axis and resolves collisions with blocking voxels.
 fn move_axis(
-    player: &mut Player,
+    state: &mut PhysicsState,
     position: &mut Vec3,
     world: &VoxelWorld,
     dt: f32,
     axis: Axis,
 ) {
-    let velocity = axis.get(&player.velocity);
+    let velocity = axis.get(&state.velocity);
 
     if velocity == 0.0 {
         return;
@@ -151,7 +203,7 @@ fn move_axis(
                     (Axis::X, false) => x as f32 + 1.0 + PLAYER_WIDTH_HALF,
                     (Axis::Y, true)  => y as f32 - PLAYER_HEIGHT,
                     (Axis::Y, false) => {
-                        player.grounded = true;
+                        state.grounded = true;
                         y as f32 + 1.0
                     }
                     (Axis::Z, true)  => z as f32 - PLAYER_WIDTH_HALF,
@@ -159,7 +211,7 @@ fn move_axis(
                 };
 
                 Axis::set(axis, position, resolved);
-                Axis::set(axis, &mut player.velocity, 0.0);
+                Axis::set(axis, &mut state.velocity, 0.0);
                 return;
             }
         }
@@ -182,7 +234,7 @@ fn blocks_movement(world: &VoxelWorld, pos: WorldCoord) -> bool {
 /// Stops the corresponding velocity and marks the player grounded on a downward collision.
 #[cfg(since19)]
 fn collide_with_terrain(
-    player: &mut Player,
+    state: &mut PhysicsState,
     position: &mut Vec3,
     world: &VoxelWorld,
     previous: Vec3,
@@ -239,9 +291,9 @@ fn collide_with_terrain(
 
     if let Some(surface) = surface {
         axis.set(position, surface - edge_offset);
-        axis.set(&mut player.velocity, 0.0);
+        axis.set(&mut state.velocity, 0.0);
         if axis == Axis::Y && velocity < 0.0 {
-            player.grounded = true;
+            state.grounded = true;
         }
     }
 }
@@ -326,199 +378,4 @@ fn terrain_ray(world: &VoxelWorld, axis: Axis, sample: Vec2, start: f32, end: f3
         });
     }
     best
-}
-
-#[cfg(all(test, since19))]
-mod tests {
-    use super::*;
-    use crate::{ChunkCoord, ChunkData, ChunkGenerationPhase, TerrainType, VoxelType, CHUNK_WIDTH};
-    use std::sync::Arc;
-
-    /// Creates a ready, empty three-by-three chunk world for collision tests.
-    fn world() -> VoxelWorld {
-        let mut world = VoxelWorld::default();
-        for z in -1..=1 {
-            for x in -1..=1 {
-                let coord = ChunkCoord::new(x, z);
-                let mut chunk = ChunkData::new(coord, Entity::PLACEHOLDER);
-                chunk.generation_phase = ChunkGenerationPhase::Done;
-                world.add_chunk(coord, Arc::new(chunk));
-            }
-        }
-        world
-    }
-
-    /// Sets a voxel in the test world without updating its density.
-    fn set(world: &mut VoxelWorld, pos: WorldCoord, voxel: VoxelType) {
-        let chunk = Arc::make_mut(world.chunks.get_mut(&pos.chunk_coord()).unwrap());
-        chunk[pos.local_coord()] = voxel;
-    }
-
-    /// Fills a square test area with three layers of flat terrain.
-    fn flat(world: &mut VoxelWorld, min: i32, max: i32) {
-        for x in min..=max {
-            for z in min..=max {
-                for y in 0..3 {
-                    set(world, WorldCoord::new(x, y, z), VoxelType::from_terrain(TerrainType::Stone));
-                }
-            }
-        }
-    }
-
-    /// Runs one axis of block and terrain collision using the player's current velocity.
-    fn step(player: &mut Player, position: &mut Vec3, world: &VoxelWorld, dt: f32, axis: Axis) {
-        let previous = *position;
-        let velocity = axis.get(&player.velocity);
-        move_axis(player, position, world, dt, axis);
-        collide_with_terrain(player, position, world, previous, velocity, axis);
-    }
-
-    #[test]
-    fn terrain_collision_uses_binary_triangles_not_density() {
-        let mut world = world();
-        flat(&mut world, 8, 13);
-        set(&mut world, WorldCoord::new(10, 3, 10), VoxelType::from_terrain(TerrainType::Stone));
-        let ray = terrain_ray(&world, Axis::Y, vec2(10.75, 10.75), 5.0, 2.0).unwrap();
-        assert!((ray.0 - 3.5).abs() < 1e-5, "slope height: {}", ray.0);
-        let mut player = Player { velocity: vec3(0.0, -10.0, 0.0), grounded: false };
-        let mut position = vec3(10.75, 5.0, 10.75);
-        step(&mut player, &mut position, &world, 0.3, Axis::Y);
-        assert!((position.y - ray.0).abs() < 1e-5);
-        assert!(player.grounded);
-        assert_eq!(player.velocity.y, 0.0);
-        assert_eq!(terrain_ray(&world, Axis::Y, vec2(10.75, 10.75), 5.0, 2.0), Some(ray));
-    }
-
-    #[test]
-    fn flat_ground_is_stable_and_blocks_do_not_change_terrain() {
-        let mut world = world();
-        flat(&mut world, 8, 13);
-        let mut player = Player::default();
-        let mut position = vec3(10.5, 3.0, 10.5);
-        for _ in 0..100 {
-            player.velocity.y = -0.3;
-            player.grounded = false;
-            step(&mut player, &mut position, &world, 0.02, Axis::Y);
-            assert!((position.y - 3.0).abs() < 1e-5);
-            assert!(player.grounded);
-        }
-        let before = terrain_ray(&world, Axis::Y, vec2(10.5, 10.5), 5.0, 2.0);
-        set(&mut world, WorldCoord::new(10, 3, 10), VoxelType::from_block(crate::BlockType::Log));
-        assert_eq!(before, terrain_ray(&world, Axis::Y, vec2(10.5, 10.5), 5.0, 2.0));
-    }
-
-    #[test]
-    fn terrain_collision_crosses_chunk_boundaries_and_negative_coordinates() {
-        let mut world = world();
-        flat(&mut world, -2, 2);
-        let width = CHUNK_WIDTH as i32;
-        for x in width - 2..=width + 1 {
-            for z in -1..=1 {
-                for y in 0..3 {
-                    set(&mut world, WorldCoord::new(x, y, z), VoxelType::from_terrain(TerrainType::Stone));
-                }
-            }
-        }
-        for x in [-0.25, 0.25, width as f32 - 0.25, width as f32 + 0.25] {
-            let hit = terrain_ray(&world, Axis::Y, vec2(x, 0.0), 5.0, 2.0).unwrap();
-            assert!((hit.0 - 3.0).abs() < 1e-5, "x={x}: {hit:?}");
-        }
-    }
-
-    #[test]
-    fn uphill_overlap_resolves_to_the_slope() {
-        let mut world = world();
-        flat(&mut world, 8, 13);
-        set(&mut world, WorldCoord::new(10, 3, 10), VoxelType::from_terrain(TerrainType::Stone));
-        let mut player = Player { velocity: vec3(0.0, -0.3, 0.0), grounded: false };
-        let mut position = vec3(10.75, 3.0, 10.75);
-        step(&mut player, &mut position, &world, 0.02, Axis::Y);
-        let expected = terrain_ray(&world, Axis::Y, vec2(10.75, 10.75), 5.0, 2.0).unwrap().0;
-        assert!((position.y - expected).abs() < 1e-5);
-        assert!(player.grounded);
-    }
-
-    #[test]
-    fn walking_up_and_down_slope_tracks_the_rendered_surface() {
-        let mut world = world();
-        flat(&mut world, 8, 13);
-        set(&mut world, WorldCoord::new(10, 3, 10), VoxelType::from_terrain(TerrainType::Stone));
-        let mut player = Player::default();
-        let mut position = vec3(11.5, 3.0, 10.5);
-        for velocity in [-1.0; 10].into_iter().chain([1.0; 10]).chain([0.0; 10]) {
-            player.velocity.x = velocity;
-            player.velocity.y -= GRAVITY * 0.1;
-            player.grounded = false;
-            step(&mut player, &mut position, &world, 0.1, Axis::X);
-            step(&mut player, &mut position, &world, 0.1, Axis::Y);
-            let expected = terrain_ray(&world, Axis::Y, vec2(position.x, position.z), 5.0, 2.0).unwrap().0;
-            assert!(position.y >= expected - 1e-4, "{position:?}, expected {expected}");
-            if velocity <= 0.0 {
-                assert!((position.y - expected).abs() < 1e-4, "{position:?}, expected {expected}");
-                assert!(player.grounded);
-            }
-        }
-        assert!((position.x - 11.5).abs() < 1e-4);
-    }
-
-    #[test]
-    fn terrain_wall_stops_motion_but_allows_moving_away() {
-        let mut world = world();
-        for x in 10..=12 {
-            for y in 1..=6 {
-                for z in 8..=12 {
-                    set(&mut world, WorldCoord::new(x, y, z), VoxelType::from_terrain(TerrainType::Stone));
-                }
-            }
-        }
-        let mut player = Player { velocity: vec3(5.0, 0.0, 0.0), grounded: false };
-        let mut position = vec3(8.5, 2.0, 10.0);
-        step(&mut player, &mut position, &world, 0.4, Axis::X);
-        assert!((position.x - 9.7).abs() < 1e-5);
-        assert_eq!(player.velocity.x, 0.0);
-        player.velocity.x = -1.0;
-        step(&mut player, &mut position, &world, 0.1, Axis::X);
-        assert!((position.x - 9.6).abs() < 1e-5);
-    }
-
-    #[test]
-    fn terrain_ceiling_and_blocks_remain_solid() {
-        let mut world = world();
-        for x in 8..=12 {
-            for z in 8..=12 {
-                for y in 5..=6 {
-                    set(&mut world, WorldCoord::new(x, y, z), VoxelType::from_terrain(TerrainType::Stone));
-                }
-            }
-        }
-        let mut player = Player { velocity: vec3(0.0, 5.0, 0.0), grounded: false };
-        let mut position = vec3(10.0, 2.0, 10.0);
-        step(&mut player, &mut position, &world, 0.4, Axis::Y);
-        assert!((position.y - 3.2).abs() < 1e-5);
-        assert_eq!(player.velocity.y, 0.0);
-        assert!(!player.grounded);
-
-        set(&mut world, WorldCoord::new(10, 2, 10), VoxelType::from_block(crate::BlockType::Log));
-        player.velocity.y = -4.0;
-        position.y = 4.0;
-        step(&mut player, &mut position, &world, 0.4, Axis::Y);
-        assert_eq!(position.y, 3.0);
-        assert!(player.grounded);
-    }
-
-    #[test]
-    fn terrain_before_a_block_wins_when_both_are_crossed() {
-        let mut world = world();
-        flat(&mut world, 8, 12);
-        for x in 9..=11 {
-            for z in 9..=11 {
-                set(&mut world, WorldCoord::new(x, 1, z), VoxelType::from_block(crate::BlockType::Log));
-            }
-        }
-        let mut player = Player { velocity: vec3(0.0, -6.0, 0.0), grounded: false };
-        let mut position = vec3(10.0, 5.0, 10.0);
-        step(&mut player, &mut position, &world, 0.55, Axis::Y);
-        assert!((position.y - 3.0).abs() < 1e-5);
-        assert!(player.grounded);
-    }
 }

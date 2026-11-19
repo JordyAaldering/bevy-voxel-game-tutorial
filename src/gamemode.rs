@@ -1,5 +1,3 @@
-use crate::{Player, is_focused};
-
 use bevy::prelude::*;
 
 #[derive(Default)]
@@ -16,7 +14,7 @@ impl Plugin for GameModePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameMode>()
             .add_systems(Update, (
-                toggle_gamemode.run_if(is_focused),
+                toggle_gamemode.run_if(crate::is_focused),
             ));
     }
 }
@@ -31,7 +29,6 @@ pub fn is_gamemode_spectator(mode: Res<GameMode>) -> bool {
 
 fn toggle_gamemode(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut player: Single<&mut Player>,
     mut mode: ResMut<GameMode>,
 ) {
     if keyboard.just_pressed(KeyCode::KeyF) {
@@ -39,7 +36,5 @@ fn toggle_gamemode(
             GameMode::Survival => GameMode::Spectator,
             GameMode::Spectator => GameMode::Survival,
         };
-        // Don't retain old vertical momentum
-        player.velocity = Vec3::ZERO;
     }
 }

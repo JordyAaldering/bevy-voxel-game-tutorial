@@ -110,3 +110,7 @@ The bottom of the world also blocks movement, while space above it remains open.
 Implementing collections of data and systems as a plugin is a good way to keep your code organized and to separate concerns.
 Turning what we have so far into a plugin is straightforward.
 The [documentation](https://bevy.org/learn/quick-start/getting-started/plugins) explains how to do it.
+
+This is also a good point to disentangle player input from the actual physics calculation.
+Input should be checked every frame, to avoid missing inputs.
+However, we should only apply these inputs during the fixed update cycle, to keep it aligned with the other physics calculations.

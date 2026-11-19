@@ -5,6 +5,7 @@ mod meshdata;
 mod player;
 mod scene;
 mod screenshot;
+mod settings;
 
 use crate::{
     chunk::*,
@@ -14,6 +15,7 @@ use crate::{
     player::*,
     scene::*,
     screenshot::*,
+    settings::*,
     voxel::*,
 };
 
@@ -50,6 +52,7 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
             DebugGizmosPlugin { wireframe: true, ..default() },
             PlayerPlugin::default(),
         ))

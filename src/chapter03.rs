@@ -4,6 +4,7 @@ mod meshdata;
 mod player;
 mod scene;
 mod screenshot;
+mod settings;
 
 use crate::{
     debug_gizmos::*,
@@ -12,6 +13,7 @@ use crate::{
     player::*,
     scene::*,
     screenshot::*,
+    settings::*,
 };
 
 use bevy::{
@@ -33,6 +35,7 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
             DebugGizmosPlugin { wireframe: true, ..default() },
             PlayerPlugin::default(),
         ))

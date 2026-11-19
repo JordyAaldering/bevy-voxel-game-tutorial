@@ -6,6 +6,7 @@ mod meshdata;
 mod raycast;
 mod scene;
 mod screenshot;
+mod settings;
 mod structure;
 mod voxel_atlas;
 

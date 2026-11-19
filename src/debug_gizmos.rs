@@ -54,6 +54,7 @@ impl Plugin for DebugGizmosPlugin {
     }
 }
 
+#[cfg(since12)]
 fn draw_chunk_borders(
     settings: Res<DebugGizmos>,
     world: Res<VoxelWorld>,

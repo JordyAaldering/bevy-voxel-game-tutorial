@@ -13,6 +13,7 @@ mod player;
 mod raycast;
 mod scene;
 mod screenshot;
+mod settings;
 mod structure;
 mod telemetry;
 mod voxel_atlas;
@@ -34,6 +35,7 @@ use crate::{
     raycast::*,
     scene::*,
     screenshot::*,
+    settings::*,
     structure::*,
     telemetry::*,
     voxel::*,
@@ -125,7 +127,6 @@ struct WorldSave {
     player_position: [f32; 3],
     player_rotation: [f32; 4],
     camera_rotation: [f32; 4],
-    player_velocity: [f32; 3],
 }
 
 impl WorldSave {
@@ -169,10 +170,11 @@ fn main() -> AppExit {
             EditorPlugin,
             TelemetryPlugin,
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
             DebugGizmosPlugin::default(),
             GameModePlugin::default(),
             PlayerPlugin::default(),
-            PhysicsPlugin::new(is_gamemode_survival),
+            PhysicsPlugin::default(),
             VoxelWorldPlugin::default(),
             GpuPlugin::default(),
         ))
@@ -204,7 +206,7 @@ fn game_view_captured(
 fn save_on_exit(
     mut exits: MessageReader<AppExit>,
     world: Res<VoxelWorld>,
-    player: Single<(&Transform, &Player)>,
+    player: Single<&Transform, With<Player>>,
     camera: Single<&Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
     if exits.read().next().is_none() {
@@ -213,12 +215,9 @@ fn save_on_exit(
 
     world.save();
 
-    let (transform, player) = *player;
     WorldSave {
-        player_position: transform.translation.to_array(),
-        player_rotation: transform.rotation.to_array(),
+        player_position: player.translation.to_array(),
+        player_rotation: player.rotation.to_array(),
         camera_rotation: camera.rotation.to_array(),
-        player_velocity: player.velocity.to_array(),
-    }
-    .save();
+    }.save();
 }

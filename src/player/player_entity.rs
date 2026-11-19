@@ -13,10 +13,7 @@ const PLAYER_EYE_HEIGHT: f32 = 1.6;
 
 #[cfg(since07)]
 #[derive(Clone, Default, Component)]
-pub struct Player {
-    pub velocity: Vec3,
-    pub grounded: bool,
-}
+pub struct Player;
 
 #[cfg(since07)]
 #[derive(Clone, Default, Component)]
@@ -46,7 +43,6 @@ fn spawn_player(mut commands: Commands) {
         vec3(4.5, 5.0, 4.5),
         Quat::IDENTITY,
         Quat::IDENTITY,
-        Vec3::ZERO,
     ));
 }
 
@@ -62,7 +58,6 @@ fn spawn_player(
         vec3(0.5, height + 1.0, 0.5),
         Quat::IDENTITY,
         Quat::IDENTITY,
-        Vec3::ZERO,
         #[cfg(since12)] editor_state.game_camera_target(),
     ));
 }
@@ -86,26 +81,19 @@ fn spawn_player(
             };
             Vec3::new(1.5, height + 1.0, 1.5)
         });
-
     let rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.player_rotation))
         .unwrap_or(Quat::IDENTITY);
-
     let camera_rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.camera_rotation))
         .unwrap_or(Quat::IDENTITY);
 
-    let velocity = save
-        .map(|save| Vec3::from(save.player_velocity))
-        .unwrap_or(Vec3::ZERO);
-
     commands.spawn_scene(player(
         position,
         rotation,
         camera_rotation,
-        velocity,
         editor_state.game_camera_target(),
     ));
 }
@@ -135,11 +123,10 @@ fn player(
     position: Vec3,
     rotation: Quat,
     camera_rotation: Quat,
-    velocity: Vec3,
 ) -> impl Scene {
     bsn! {
         #Player
-        Player { velocity }
+        Player
         Transform {
             translation: position,
             rotation,
@@ -165,12 +152,11 @@ fn player(
     position: Vec3,
     rotation: Quat,
     camera_rotation: Quat,
-    velocity: Vec3,
     camera_target: bevy::camera::RenderTarget,
 ) -> impl Scene {
     bsn! {
         #Player
-        Player { velocity }
+        Player
         Transform {
             translation: position,
             rotation,

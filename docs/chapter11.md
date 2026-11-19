@@ -72,7 +72,7 @@ I omit it for now, because I want to avoid recompilations when enabling/disablin
 I'll use the `bevy-inspector-egui` again to add a toggle for showing gizmos, just like we did for the camera settings.
 To avoid a blowup of the number of egui windows, I'll group all debug settings into a single window: `DebugSettingsView`.
 
-This is a bit of a pain, because I still want CameraSettings and DebugGizmos to be separate resources: the player_look function should not have access to DebugGizmos; that's just poor design.
+This is a bit of a pain, because I still want InputSettings and DebugGizmos to be separate resources: the player_look function should not have access to DebugGizmos; that's just poor design.
 However, I also don't want to have two (or more) separate egui windows for the debug settings, because that would be a mess.
 We could manually create a window, but that would also mean manually implementing the sliders etc.
 Luckily, we can let the window of each resource be automatically drawn.
@@ -92,7 +92,7 @@ fn debug_settings_ui(world: &mut World) {
     egui::Window::new("Settings").show(ctx.get_mut(), |ui| {
         ui.heading("Camera Settings");
         ui.push_id("camera_settings", |ui| {
-            bevy_inspector::ui_for_resource::<CameraSettings>(world, ui);
+            bevy_inspector::ui_for_resource::<InputSettings>(world, ui);
         });
 
         ui.separator();

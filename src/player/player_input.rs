@@ -1,5 +1,3 @@
-#[cfg(since02)]
-use super::CameraSettings;
 #[cfg(since07)]
 use super::{Player, PlayerCamera};
 
@@ -41,8 +39,7 @@ pub(super) fn register(app: &mut App) {
         (
             player_look,
             #[cfg(since08)] break_place_block,
-            move_spectator.run_if(crate::is_gamemode_spectator),
-            move_survival.run_if(crate::is_gamemode_survival),
+            get_movement_input,
         ).run_if(crate::is_focused),
     ));
 
@@ -51,8 +48,7 @@ pub(super) fn register(app: &mut App) {
         (
             player_look,
             break_place_block,
-            move_spectator.run_if(crate::is_gamemode_spectator),
-            move_survival.run_if(crate::is_gamemode_survival),
+            get_movement_input,
         ).run_if(crate::is_focused.and_then(crate::game_view_captured)),
     ));
 }
@@ -162,7 +158,7 @@ fn toggle_cursor(
 fn player_look(
     mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
-    #[cfg(since02)] settings: Res<CameraSettings>,
+    #[cfg(since02)] settings: Res<crate::InputSettings>,
 ) {
     let delta = mouse.delta;
 
@@ -182,7 +178,7 @@ fn player_look(
     mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
     mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
-    settings: Res<CameraSettings>,
+    settings: Res<crate::InputSettings>,
 ) {
     let delta = mouse.delta;
 
@@ -204,7 +200,7 @@ fn move_spectator(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
-    #[cfg(since02)] settings: Res<CameraSettings>,
+    #[cfg(since02)] settings: Res<crate::InputSettings>,
 ) {
     let delta = vec3(
         f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
@@ -224,54 +220,14 @@ fn move_spectator(
 }
 
 #[cfg(since07)]
-fn move_spectator(
-    time: Res<Time>,
+fn get_movement_input(
     keyboard: Res<ButtonInput<KeyCode>>,
-    player: Single<(&mut Transform, &mut Player)>,
-    settings: Res<CameraSettings>,
+    mut input: ResMut<crate::PhysicsInput>,
 ) {
-    let (mut transform, mut player) = player.into_inner();
-
-    player.velocity = Vec3::ZERO;
-    player.grounded = false;
-
-    let delta = vec3(
-        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
-        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-    );
-
-    if delta != Vec3::ZERO {
-        let direction = delta.x * transform.right() + delta.y * Vec3::Y + delta.z * transform.forward();
-        transform.translation += settings.move_speed * time.delta_secs() * direction.normalize();
-    }
-}
-
-#[cfg(since07)]
-fn move_survival(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    player: Single<(&mut Player, &Transform)>,
-    settings: Res<CameraSettings>,
-) {
-    let (mut player, transform) = player.into_inner();
-
-    let dx = f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA));
-    let dz = f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS));
-
-    if dx != 0.0 || dz != 0.0 {
-        let movement = dx * transform.right() + dz * transform.forward();
-        let movement = movement.normalize_or_zero();
-        player.velocity.x = movement.x * settings.move_speed;
-        player.velocity.z = movement.z * settings.move_speed;
-    } else {
-        player.velocity.x = 0.0;
-        player.velocity.z = 0.0;
-    }
-
-    if player.grounded && keyboard.just_pressed(KeyCode::Space) {
-        player.velocity.y = settings.jump_strenght;
-        player.grounded = false;
-    }
+    input.movement.x = f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA));
+    input.movement.y = f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS));
+    input.jump = keyboard.pressed(KeyCode::Space);
+    input.crouch = keyboard.pressed(KeyCode::ShiftLeft);
 }
 
 #[cfg(since08)]

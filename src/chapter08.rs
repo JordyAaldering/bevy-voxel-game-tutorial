@@ -9,6 +9,7 @@ mod player;
 mod raycast;
 mod scene;
 mod screenshot;
+mod settings;
 mod voxel_world;
 
 use crate::{
@@ -23,6 +24,7 @@ use crate::{
     raycast::*,
     scene::*,
     screenshot::*,
+    settings::*,
     voxel::*,
     voxel_world::*,
 };
@@ -86,10 +88,11 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
             DebugGizmosPlugin::default(),
             GameModePlugin::default(),
             PlayerPlugin::default(),
-            PhysicsPlugin::new(is_gamemode_survival),
+            PhysicsPlugin::default(),
             VoxelWorldPlugin::default(),
         ))
         .add_systems(Startup, (
