@@ -14,7 +14,7 @@ use bevy_inspector_egui::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum EditorTab {
+pub(super) enum EditorTab {
     GameView,
     EditorView,
     Hierarchy,
@@ -22,7 +22,7 @@ pub enum EditorTab {
     Inspector,
 }
 
-pub struct EditorTabViewer<'w> {
+pub(super) struct EditorTabViewer<'w> {
     pub world: &'w mut World,
     pub game_view: &'w mut ViewTarget,
     pub editor_view: &'w mut ViewTarget,

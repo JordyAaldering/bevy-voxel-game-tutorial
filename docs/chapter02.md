@@ -64,6 +64,8 @@ Then, in `toggle_cursor`, only grab the cursor if egui does not want the input.
 
 ## Capturing screenshots
 
+TODO: bevy has specific run conditions for key inputs: https://bevy-cheatbook.github.io/input/mouse.html#run-conditions.
+
 If you want to easily share your progress, it is really useful to have screenshotting and recording functionality built right into the game.
 
 ## Recording GIFs

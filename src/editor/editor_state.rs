@@ -14,7 +14,7 @@ use bevy_inspector_egui::{
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 
 #[derive(Resource)]
-pub struct EditorState {
+pub(super) struct EditorState {
     state: DockState<EditorTab>,
     active_tab: Option<EditorTab>,
     game_view: ViewTarget,
@@ -42,56 +42,48 @@ impl Default for EditorState {
 }
 
 impl EditorState {
-    pub fn set_game_view(&mut self, view: ViewTarget) {
+    pub(super) fn set_game_view(&mut self, view: ViewTarget) {
         self.game_view = view;
     }
 
-    pub fn set_editor_view(&mut self, view: ViewTarget) {
+    pub(super) fn set_editor_view(&mut self, view: ViewTarget) {
         self.editor_view = view;
     }
 
-    pub fn get_game_view(&self) -> &ViewTarget {
+    pub(super) fn get_game_view(&self) -> &ViewTarget {
         &self.game_view
     }
 
-    pub fn get_editor_view(&self) -> &ViewTarget {
+    pub(super) fn get_editor_view(&self) -> &ViewTarget {
         &self.editor_view
     }
 
-    pub fn is_game_view_visible(&self) -> bool {
-        self.game_view.is_visible()
-    }
-
-    pub fn is_editor_view_visible(&self) -> bool {
+    pub(super) fn is_editor_view_visible(&self) -> bool {
         self.editor_view.is_visible()
     }
 
     /// Whether the game view is the tab that was last clicked in.
-    pub fn is_game_view_active(&self) -> bool {
+    pub(super) fn is_game_view_active(&self) -> bool {
         self.active_tab == Some(EditorTab::GameView)
     }
 
-    pub fn is_editor_view_active(&self) -> bool {
+    pub(super) fn is_editor_view_active(&self) -> bool {
         self.active_tab == Some(EditorTab::EditorView)
     }
 
-    pub fn game_view_contains(&self, position: Vec2) -> bool {
-        self.game_view.contains(position)
-    }
-
-    pub fn editor_view_contains(&self, position: Vec2) -> bool {
+    pub(super) fn editor_view_contains(&self, position: Vec2) -> bool {
         self.editor_view.contains(position)
     }
 
-    pub fn game_camera_target(&self) -> RenderTarget {
+    pub(super) fn game_camera_target(&self) -> RenderTarget {
         self.game_view.image.clone().into()
     }
 
-    pub fn editor_camera_target(&self) -> RenderTarget {
+    pub(super) fn editor_camera_target(&self) -> RenderTarget {
         self.editor_view.image.clone().into()
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
+    pub(super) fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
         // Only tabs that are visible this frame report a rect
         self.game_view.rect = None;
         self.editor_view.rect = None;

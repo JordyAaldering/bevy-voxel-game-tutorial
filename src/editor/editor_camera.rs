@@ -9,7 +9,7 @@ use bevy::{
 };
 use bevy_inspector_egui::bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
-pub fn spawn_editor_camera(
+pub(super) fn spawn_editor_camera(
     mut commands: Commands,
     mut egui_settings: ResMut<EguiGlobalSettings>,
     editor_state: Res<EditorState>,
@@ -44,7 +44,7 @@ pub fn spawn_editor_camera(
 
 /// Right mouse button orbits, middle mouse button pans and the scroll wheel zooms, all
 /// relative to the editor view. The cursor is never captured.
-pub fn editor_camera_input(
+pub(super) fn editor_camera_input(
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,

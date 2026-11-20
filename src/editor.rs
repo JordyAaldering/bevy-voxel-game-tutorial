@@ -3,12 +3,12 @@ mod editor_state;
 mod editor_tab;
 mod view_target;
 
-use editor_camera::{spawn_editor_camera, editor_camera_input};
-pub use editor_state::EditorState;
+use editor_camera::{editor_camera_input, spawn_editor_camera};
+use editor_state::EditorState;
 use editor_tab::{EditorTab, EditorTabViewer};
 use view_target::ViewTarget;
 
-use crate::PlayerCamera;
+use crate::{GameViewport, PlayerCamera};
 
 use bevy::{
     prelude::*,
@@ -18,7 +18,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 use bevy_inspector_egui::{
-    bevy_egui::{EguiContext, EguiPrimaryContextPass, EguiTextureHandle, EguiUserTextures, PrimaryEguiContext},
+    bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, EguiUserTextures, PrimaryEguiContext},
     egui,
 };
 
@@ -30,16 +30,30 @@ struct EditorCamera;
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EditorState>()
-            .add_plugins((MeshPickingPlugin, DefaultPanOrbitCameraPlugins))
+            .add_plugins((
+                EguiPlugin::default(),
+                MeshPickingPlugin,
+                DefaultPanOrbitCameraPlugins,
+            ))
             .add_systems(PreStartup, setup_view_targets)
             .add_systems(Startup, spawn_editor_camera)
-            .add_systems(EguiPrimaryContextPass, show_editor)
-            .add_systems(Update, editor_camera_input.run_if(is_editor_view_visible).before(SyncCameraPosition))
-            .add_systems(PostUpdate, update_view_targets.after(show_editor));
+            .add_systems(PostStartup, configure_game_camera)
+            .add_systems(EguiPrimaryContextPass, (
+                show_editor,
+                update_game_viewport.after(show_editor)
+            ))
+            .add_systems(Update, (
+                editor_camera_input
+                    .run_if(is_editor_view_visible)
+                    .before(SyncCameraPosition),
+            ))
+            .add_systems(PostUpdate, (
+                update_view_targets.after(show_editor),
+            ));
     }
 }
 
-pub fn show_editor(world: &mut World) {
+fn show_editor(world: &mut World) {
     let Ok(mut egui_context) = world
         .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
         .single_mut(world)
@@ -64,11 +78,31 @@ pub fn show_editor(world: &mut World) {
     );
 }
 
-pub fn is_editor_view_visible(editor_state: Res<EditorState>) -> bool {
+fn is_editor_view_visible(editor_state: Res<EditorState>) -> bool {
     editor_state.is_editor_view_visible()
 }
 
-pub fn setup_view_targets(
+fn configure_game_camera(
+    editor_state: Res<EditorState>,
+    mut target: Single<&mut bevy::camera::RenderTarget, With<PlayerCamera>>,
+) {
+    **target = editor_state.game_camera_target();
+}
+
+fn update_game_viewport(
+    editor_state: Res<EditorState>,
+    mut game_viewport: ResMut<GameViewport>,
+) {
+    let rect = editor_state.get_game_view().rect.map(|rect| {
+        Rect::from_corners(
+            vec2(rect.min.x, rect.min.y),
+            vec2(rect.max.x, rect.max.y),
+        )
+    });
+    game_viewport.set_embedded(editor_state.is_game_view_active(), rect);
+}
+
+fn setup_view_targets(
     mut editor_state: ResMut<EditorState>,
     mut images: ResMut<Assets<Image>>,
     mut egui_textures: ResMut<EguiUserTextures>,

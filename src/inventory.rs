@@ -5,7 +5,7 @@ use crate::{
     TerrainType,
     VoxelType,
     VoxelTypeItem,
-    EditorState,
+    GameViewport,
     game_view_captured,
     VoxelAtlasAssets,
 };
@@ -13,12 +13,11 @@ use crate::{
 use bevy::{
     prelude::*,
     asset::uuid::Uuid,
-    camera::NormalizedRenderTarget,
+    camera::RenderTarget,
     input::mouse::{MouseScrollUnit, MouseWheel},
     picking::{PickingSystems, pointer::{Location, PointerAction, PointerId, PointerInput, PointerLocation}},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::egui;
 
 const INVENTORY_POINTER: PointerId = PointerId::Custom(Uuid::from_u128(0x513fdb1910924cd3b8855f7cd53a1841));
 
@@ -272,34 +271,39 @@ fn cancel_inventory_pointer(commands: &mut Commands, location: Location) {
     }
 }
 
-fn game_view_position(rect: Option<egui::Rect>, position: Vec2, viewport_size: Vec2) -> Option<Vec2> {
-    let rect = rect?;
-    if !rect.contains(egui::pos2(position.x, position.y)) || rect.width() <= 0.0 || rect.height() <= 0.0 {
-        return None;
-    }
-    let local = position - vec2(rect.min.x, rect.min.y);
-    Some(local / vec2(rect.width(), rect.height()) * viewport_size)
-}
-
 fn forward_inventory_pointer(
     mut commands: Commands,
     mut inputs: MessageReader<PointerInput>,
-    editor: Res<EditorState>,
+    game_viewport: Res<GameViewport>,
     inventory: Res<CreativeInventoryState>,
-    camera: Single<&Camera, With<PlayerCamera>>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    camera: Single<(&Camera, &RenderTarget), With<PlayerCamera>>,
+    window: Single<(Entity, &Window), With<PrimaryWindow>>,
     mut pointers: Query<(&PointerId, &mut PointerLocation)>,
 ) {
     let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
         return;
     };
+
+    if !game_viewport.is_embedded() {
+        if let Some(location) = pointer.location.take() {
+            cancel_inventory_pointer(&mut commands, location);
+        }
+        for _ in inputs.read() {}
+        return;
+    }
+
+    let (camera, render_target) = camera.into_inner();
+    let (window_entity, window) = window.into_inner();
     let viewport_size = camera.logical_viewport_size();
     let map_position = |position| {
-        (inventory.open && editor.is_game_view_visible() && editor.is_game_view_active())
-            .then(|| viewport_size.and_then(|size| game_view_position(editor.get_game_view().rect, position, size)))
+        inventory.open
+            .then(|| viewport_size.and_then(|size| game_viewport.map_position(position, size)))
             .flatten()
     };
-    let target = NormalizedRenderTarget::Image(editor.get_game_view().image.clone().into());
+    let Some(target) = render_target.normalize(Some(window_entity)) else {
+        return;
+    };
+
     for input in inputs.read().filter(|input| input.pointer_id == PointerId::Mouse) {
         let Some(position) = map_position(input.location.position) else {
             if let Some(location) = pointer.location.take() {
@@ -336,21 +340,24 @@ fn forward_inventory_pointer(
 }
 
 fn sync_inventory_pointer(
-    editor: Res<EditorState>,
+    game_viewport: Res<GameViewport>,
     inventory: Res<CreativeInventoryState>,
-    camera: Single<&Camera, With<PlayerCamera>>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    camera: Single<(&Camera, &RenderTarget), With<PlayerCamera>>,
+    window: Single<(Entity, &Window), With<PrimaryWindow>>,
     mut pointers: Query<(&PointerId, &mut PointerLocation)>,
 ) {
     let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
         return;
     };
-    let location = if inventory.open && editor.is_game_view_visible() && editor.is_game_view_active() {
+    let (camera, render_target) = camera.into_inner();
+    let (window_entity, window) = window.into_inner();
+    let location = if inventory.open && game_viewport.is_embedded() {
         window.cursor_position()
             .zip(camera.logical_viewport_size())
-            .and_then(|(position, size)| game_view_position(editor.get_game_view().rect, position, size))
-            .map(|position| Location {
-                target: NormalizedRenderTarget::Image(editor.get_game_view().image.clone().into()),
+            .and_then(|(position, size)| game_viewport.map_position(position, size))
+            .zip(render_target.normalize(Some(window_entity)))
+            .map(|(position, target)| Location {
+                target,
                 position,
             })
     } else {
@@ -363,7 +370,7 @@ fn update_cursor_preview(
     held: Res<HeldInventoryItem>,
     state: Res<CreativeInventoryState>,
     window: Single<&Window, With<PrimaryWindow>>,
-    editor: Res<EditorState>,
+    game_viewport: Res<GameViewport>,
     camera: Single<&Camera, With<PlayerCamera>>,
     atlas: Res<VoxelAtlasAssets>,
     voxel_atlas: Res<SharedVoxelAtlas>,
@@ -378,7 +385,7 @@ fn update_cursor_preview(
 
     let Some(position) = window.cursor_position()
         .zip(camera.logical_viewport_size())
-        .and_then(|(position, size)| game_view_position(editor.get_game_view().rect, position, size))
+        .and_then(|(position, size)| game_viewport.map_position(position, size))
     else {
         node.display = Display::None;
         return;

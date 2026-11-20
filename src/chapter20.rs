@@ -5,6 +5,7 @@ mod coords;
 mod debug_gizmos;
 mod editor;
 mod gamemode;
+mod game_view;
 mod inventory;
 mod marching;
 mod meshdata;
@@ -28,6 +29,7 @@ use crate::{
     coords::*,
     debug_gizmos::*,
     editor::*,
+    game_view::*,
     gamemode::*,
     inventory::*,
     meshdata::*,
@@ -53,7 +55,6 @@ use bevy::{
     app::OnAppExitSystems,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::bevy_egui::prelude::*;
 
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_HEIGHT: usize = 64;
@@ -347,7 +348,6 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest()),
-            EguiPlugin::default(),
             EditorPlugin,
             TelemetryPlugin,
             ScreenshotPlugin::default(),
@@ -377,12 +377,11 @@ fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
 }
 
 fn game_view_captured(
-    editor_state: Res<EditorState>,
+    game_viewport: Res<GameViewport>,
     inventory: Res<CreativeInventoryState>,
     cursor: Single<&CursorOptions, With<PrimaryWindow>>,
 ) -> bool {
-    editor_state.is_game_view_active()
-        && editor_state.is_game_view_visible()
+    game_viewport.is_active()
         && cursor.grab_mode == CursorGrabMode::Locked
         && !inventory.open
 }

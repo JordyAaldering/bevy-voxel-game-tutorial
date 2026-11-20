@@ -100,13 +100,13 @@ fn toggle_cursor(
     mouse: Res<ButtonInput<MouseButton>>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
     window: Single<&Window, With<PrimaryWindow>>,
-    editor_state: Res<crate::EditorState>,
+    viewport: Res<crate::GameViewport>,
 ) {
     // Release the cursor when escape is pressed, or when the game view is no longer the active tab
     if keyboard.just_pressed(KeyCode::Escape)
         || (
             cursor.grab_mode != CursorGrabMode::None
-            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible())
+            && !viewport.is_active()
         )
     {
         cursor.grab_mode = CursorGrabMode::None;
@@ -115,8 +115,7 @@ fn toggle_cursor(
 
     // Capture only when clicking inside the game view
     if mouse.just_pressed(MouseButton::Left)
-        && editor_state.is_game_view_active()
-        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+        && window.cursor_position().is_some_and(|position| viewport.contains(position))
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -127,7 +126,7 @@ fn toggle_cursor(
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    editor_state: Res<crate::EditorState>,
+    viewport: Res<crate::GameViewport>,
     window: Single<&Window, With<PrimaryWindow>>,
     inventory: Res<crate::CreativeInventoryState>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
@@ -136,7 +135,7 @@ fn toggle_cursor(
     if keyboard.just_pressed(KeyCode::Escape)
         || (
             cursor.grab_mode != CursorGrabMode::None
-            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible())
+            && !viewport.is_active()
         )
     {
         cursor.grab_mode = CursorGrabMode::None;
@@ -145,8 +144,7 @@ fn toggle_cursor(
 
     // Capture only when clicking inside the game view
     if mouse.just_pressed(MouseButton::Left)
-        && editor_state.is_game_view_active()
-        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+        && window.cursor_position().is_some_and(|position| viewport.contains(position))
         && !inventory.open
     {
         cursor.grab_mode = CursorGrabMode::Locked;

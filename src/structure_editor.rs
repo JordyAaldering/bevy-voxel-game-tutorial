@@ -9,6 +9,7 @@ mod chunk_neighbors;
 mod coords;
 mod editor;
 mod gamemode;
+mod game_view;
 mod inventory;
 mod marching;
 mod meshdata;
@@ -31,6 +32,7 @@ use crate::{
     coords::*,
     editor::*,
     gamemode::*,
+    game_view::*,
     inventory::*,
     meshdata::*,
     noise::*,
@@ -54,7 +56,6 @@ use bevy::{
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
 
 pub const CHUNK_WIDTH: usize = 64;
 pub const CHUNK_HEIGHT: usize = 32;
@@ -353,7 +354,6 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest()),
-            EguiPlugin::default(),
             EditorPlugin,
             ScreenshotPlugin::default(),
             SettingsPlugin::default(),
