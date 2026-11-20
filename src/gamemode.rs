@@ -1,18 +1,21 @@
+use better_default::Default;
 use bevy::prelude::*;
 
 #[derive(Default)]
-pub struct GameModePlugin;
+pub struct GameModePlugin {
+    #[default(GameMode::Survival)]
+    starting_gamemode: GameMode,
+}
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Resource)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Resource)]
 pub enum GameMode {
-    #[default]
     Survival,
     Spectator,
 }
 
 impl Plugin for GameModePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<GameMode>()
+        app.insert_resource(self.starting_gamemode)
             .add_systems(Update, (
                 toggle_gamemode.run_if(crate::is_focused),
             ));

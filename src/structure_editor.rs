@@ -1,391 +1,351 @@
+//! Assumes that chapter 20 is the main binary in Cargo.toml, because this file relies
+//! on the automatically generated features (e.g., `until14`, `only17`, `since20`).
+
+#![allow(unused)]
+
+mod biome;
+mod chunk;
+mod chunk_neighbors;
 mod coords;
-mod density;
 mod editor;
+mod gamemode;
 mod inventory;
+mod marching;
 mod meshdata;
+mod noise;
+mod ore;
+mod physics;
+mod player;
 mod raycast;
 mod scene;
 mod screenshot;
 mod settings;
 mod structure;
 mod voxel_atlas;
+mod voxel_world;
 
 use crate::{
-    coords::*, editor::{EditorPlugin, EditorState}, inventory::CreativeInventoryPlugin, structure::{Structure, StructureVoxel}, voxel_atlas::{VoxelAtlas, VoxelAtlasAssets, build_voxel_atlas},
+    biome::*,
+    chunk::*,
+    chunk_neighbors::*,
+    coords::*,
+    editor::*,
+    gamemode::*,
+    inventory::*,
+    meshdata::*,
+    noise::*,
+    ore::*,
+    physics::*,
+    player::*,
+    raycast::*,
+    scene::*,
+    screenshot::*,
+    settings::*,
+    structure::*,
+    voxel::*,
+    voxel_atlas::*,
+    voxel_world::*,
 };
 
-use std::sync::Arc;
+use std::{fs, io, path::{Path, PathBuf}};
 
-use bevy::{input::mouse::AccumulatedMouseMotion, platform::collections::HashMap, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{
+    prelude::*,
+    platform::collections::HashMap,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+};
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 
-pub const CHUNK_WIDTH: usize = 0;
-pub const CHUNK_HEIGHT: usize = 0;
+pub const CHUNK_WIDTH: usize = 64;
+pub const CHUNK_HEIGHT: usize = 32;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[repr(transparent)]
-pub struct VoxelType(u16);
+const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/strucuture_editor");
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum VoxelTypeItem {
-    Air,
-    Block(BlockType),
-    Terrain(TerrainType),
-}
+mod voxel {
+    /// A compact representation of a voxel type.
+    ///
+    /// A voxel can represent air, a block type, or a terrain type. These categories
+    /// are encoded into a single `u16` to keep voxel storage memory-efficient.
+    ///
+    /// The 16 bits are divided into two fields:
+    ///
+    /// - The upper 3 bits identify the voxel category.
+    /// - The lower 13 bits identify the specific type within that category.
+    ///
+    /// This allows for up to 8 categories, each with up to 8192 distinct types.
+    ///
+    /// The category discriminants are:
+    ///
+    /// | Category | Bits  |
+    /// |----------|-------|
+    /// | Air      | `000` |
+    /// | Block    | `001` |
+    /// | Terrain  | `010` |
+    ///
+    /// The individual block and terrain types are defined as separate enums.
+    /// Their discriminants are stored in the lower 13 bits, allowing them to
+    /// retain the type safety and readability of enums without requiring
+    /// a larger representation for every voxel.
+    ///
+    /// A regular enum containing these categories would require the compiler
+    /// to represent both the category discriminant and its associated payload.
+    /// By encoding both explicitly, we guarantee that each `VoxelType` occupies
+    /// exactly two bytes.
+    ///
+    /// Most operations can work directly on the packed representation using
+    /// bit masks, avoiding the need to unpack the value. The `unpack` method is
+    /// provided for cases where the actual `BlockType` or `TerrainType` is needed.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[repr(transparent)]
+    pub struct VoxelType(u16);
 
-impl Into<VoxelType> for VoxelTypeItem {
-    fn into(self) -> VoxelType {
-        match self {
-            Self::Air => VoxelType::AIR,
-            Self::Block(block) => VoxelType::from_block(block),
-            Self::Terrain(terrain) => VoxelType::from_terrain(terrain),
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum VoxelTypeItem {
+        Air,
+        Block(BlockType),
+        Terrain(TerrainType),
+    }
+
+    impl Into<VoxelType> for VoxelTypeItem {
+        fn into(self) -> VoxelType {
+            match self {
+                Self::Air => VoxelType::AIR,
+                Self::Block(block) => VoxelType::from_block(block),
+                Self::Terrain(terrain) => VoxelType::from_terrain(terrain),
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    #[repr(u16)]
+    pub enum BlockType {
+        Log,
+        Leaves,
+        BrickGrey,
+        BrickRed,
+        Cactus,
+        CottonBlue,
+        CottonGreen,
+        CottonRed,
+        CottonWhite,
+        Glass,
+    }
+
+    impl BlockType {
+        pub const ALL: [Self; 10] = [
+            Self::Log,
+            Self::Leaves,
+            Self::BrickGrey,
+            Self::BrickRed,
+            Self::Cactus,
+            Self::CottonBlue,
+            Self::CottonGreen,
+            Self::CottonRed,
+            Self::CottonWhite,
+            Self::Glass,
+        ];
+    }
+
+    impl TryFrom<u16> for BlockType {
+        type Error = String;
+
+        fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+            Ok(match value {
+                0 => Self::Log,
+                1 => Self::Leaves,
+                2 => Self::BrickGrey,
+                3 => Self::BrickRed,
+                4 => Self::Cactus,
+                5 => Self::CottonBlue,
+                6 => Self::CottonGreen,
+                7 => Self::CottonRed,
+                8 => Self::CottonWhite,
+                9 => Self::Glass,
+                _ => return Err(format!("Invalid block type: {value}")),
+            })
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    #[repr(u16)]
+    pub enum TerrainType {
+        Grass,
+        Dirt,
+        Stone,
+        StoneCoal,
+        StoneIron,
+        StoneGold,
+        StoneDiamond,
+        Sand,
+        Snow,
+        Ice,
+    }
+
+    impl TerrainType {
+        pub const ALL: [Self; 10] = [
+            Self::Grass,
+            Self::Dirt,
+            Self::Stone,
+            Self::StoneCoal,
+            Self::StoneIron,
+            Self::StoneGold,
+            Self::StoneDiamond,
+            Self::Sand,
+            Self::Snow,
+            Self::Ice,
+        ];
+    }
+
+    impl TryFrom<u16> for TerrainType {
+        type Error = String;
+
+        fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
+            Ok(match value {
+                0 => Self::Grass,
+                1 => Self::Dirt,
+                2 => Self::Stone,
+                3 => Self::StoneCoal,
+                4 => Self::StoneIron,
+                5 => Self::StoneGold,
+                6 => Self::StoneDiamond,
+                7 => Self::Sand,
+                8 => Self::Snow,
+                9 => Self::Ice,
+                _ => return Err(format!("Invalid terrain type: {value}")),
+            })
+        }
+    }
+
+    #[allow(dead_code)]
+    impl VoxelType {
+        /// The lower 13 bits are the type, the upper 3 bits are the category.
+        const TYPE_MASK: u16 = 0x1FFF;
+        const CATEGORY_MASK: u16 = 0xE000;
+
+        const DISCRIMINANT_AIR: u16 = 0b000 << 13;
+        const DISCRIMINANT_BLOCK: u16 = 0b001 << 13;
+        const DISCRIMINANT_TERRAIN: u16 = 0b010 << 13;
+
+        pub const AIR: Self = Self(Self::DISCRIMINANT_AIR);
+
+        pub const fn from_block(block: BlockType) -> Self {
+            Self(Self::DISCRIMINANT_BLOCK | (block as u16))
+        }
+
+        pub const fn from_terrain(terrain: TerrainType) -> Self {
+            Self(Self::DISCRIMINANT_TERRAIN | (terrain as u16))
+        }
+
+        pub const fn is_transparent(self) -> bool {
+            self.is_air()
+        }
+
+        pub const fn is_solid(self) -> bool {
+            !self.is_air()
+        }
+
+        pub const fn is_air(self) -> bool {
+            (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_AIR
+        }
+
+        pub const fn is_block(self) -> bool {
+            (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_BLOCK
+        }
+
+        pub const fn is_terrain(self) -> bool {
+            (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_TERRAIN
+        }
+
+        pub const fn is_block_id(self, id: BlockType) -> bool {
+            self.is_block() && (self.0 & Self::TYPE_MASK) == id as u16
+        }
+
+        pub const fn is_terrain_id(self, id: TerrainType) -> bool {
+            self.is_terrain() && (self.0 & Self::TYPE_MASK) == id as u16
+        }
+
+        pub const fn block_id(self) -> Option<u16> {
+            if self.is_block() {
+                Some(self.0 & Self::TYPE_MASK)
+            } else {
+                None
+            }
+        }
+
+        pub const fn terrain_id(self) -> Option<u16> {
+            if self.is_terrain() {
+                Some(self.0 & Self::TYPE_MASK)
+            } else {
+                None
+            }
+        }
+
+        pub fn unpack(self) -> Result<VoxelTypeItem, String> {
+            let discriminant = 0xE000 & self.0;
+            let payload = 0x1FFF & self.0;
+            Ok(match discriminant {
+                Self::DISCRIMINANT_AIR => VoxelTypeItem::Air,
+                Self::DISCRIMINANT_BLOCK => VoxelTypeItem::Block(BlockType::try_from(payload)?),
+                Self::DISCRIMINANT_TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
+                _ => return Err(format!("Invalid voxel discriminant: {discriminant:#X}")),
+            })
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Resource, Default)]
+struct StructureWorld {
+    voxels: HashMap<WorldCoord, StructureVoxel>,
+}
+
+/// Global world state, stored in `world.bin`.
 #[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[repr(u16)]
-pub enum BlockType {
-    Log,
-    Leaves,
-    BrickGrey,
-    BrickRed,
-    Cactus,
-    CottonBlue,
-    CottonGreen,
-    CottonRed,
-    CottonWhite,
-    Glass,
+struct WorldSave {
+    player_position: [f32; 3],
+    player_rotation: [f32; 4],
+    camera_rotation: [f32; 4],
 }
 
-impl BlockType {
-    const ALL: [Self; 10] = [
-        Self::Log,
-        Self::Leaves,
-        Self::BrickGrey,
-        Self::BrickRed,
-        Self::Cactus,
-        Self::CottonBlue,
-        Self::CottonGreen,
-        Self::CottonRed,
-        Self::CottonWhite,
-        Self::Glass,
-    ];
-}
-
-impl TryFrom<u16> for BlockType {
-    type Error = String;
-
-    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
-        Ok(match value {
-            0 => Self::Log,
-            1 => Self::Leaves,
-            2 => Self::BrickGrey,
-            3 => Self::BrickRed,
-            4 => Self::Cactus,
-            5 => Self::CottonBlue,
-            6 => Self::CottonGreen,
-            7 => Self::CottonRed,
-            8 => Self::CottonWhite,
-            9 => Self::Glass,
-            _ => return Err(format!("Invalid block type: {value}")),
-        })
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(wincode::SchemaWrite, wincode::SchemaRead)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[repr(u16)]
-pub enum TerrainType {
-    Grass,
-    Dirt,
-    Stone,
-    StoneCoal,
-    StoneIron,
-    StoneGold,
-    StoneDiamond,
-    Sand,
-    Snow,
-    Ice,
-}
-
-impl TerrainType {
-    const ALL: [Self; 10] = [
-        Self::Grass,
-        Self::Dirt,
-        Self::Stone,
-        Self::StoneCoal,
-        Self::StoneIron,
-        Self::StoneGold,
-        Self::StoneDiamond,
-        Self::Sand,
-        Self::Snow,
-        Self::Ice,
-    ];
-}
-
-impl TryFrom<u16> for TerrainType {
-    type Error = String;
-
-    fn try_from(value: u16) -> std::prelude::v1::Result<Self, Self::Error> {
-        Ok(match value {
-            0 => Self::Grass,
-            1 => Self::Dirt,
-            2 => Self::Stone,
-            3 => Self::StoneCoal,
-            4 => Self::StoneIron,
-            5 => Self::StoneGold,
-            6 => Self::StoneDiamond,
-            7 => Self::Sand,
-            8 => Self::Snow,
-            9 => Self::Ice,
-            _ => return Err(format!("Invalid terrain type: {value}")),
-        })
-    }
-}
-
-impl VoxelType {
-    /// The lower 13 bits are the type, the upper 3 bits are the category.
-    const TYPE_MASK: u16 = 0x1FFF;
-    const CATEGORY_MASK: u16 = 0xE000;
-
-    const DISCRIMINANT_AIR: u16 = 0b000 << 13;
-    const DISCRIMINANT_BLOCK: u16 = 0b001 << 13;
-    const DISCRIMINANT_TERRAIN: u16 = 0b010 << 13;
-
-    pub const AIR: Self = Self(Self::DISCRIMINANT_AIR);
-
-    pub const fn from_block(block: BlockType) -> Self {
-        Self(Self::DISCRIMINANT_BLOCK | (block as u16))
+impl WorldSave {
+    fn path() -> PathBuf {
+        Path::new(SAVE_DIR).join("world.bin")
     }
 
-    pub const fn from_terrain(terrain: TerrainType) -> Self {
-        Self(Self::DISCRIMINANT_TERRAIN | (terrain as u16))
-    }
-
-    pub const fn is_transparent(self) -> bool {
-        self.is_air()
-    }
-
-    pub const fn is_solid(self) -> bool {
-        !self.is_air()
-    }
-
-    pub const fn is_air(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_AIR
-    }
-
-    pub const fn is_block(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_BLOCK
-    }
-
-    pub const fn is_terrain(self) -> bool {
-        (self.0 & Self::CATEGORY_MASK) == Self::DISCRIMINANT_TERRAIN
-    }
-
-    pub const fn is_block_id(self, id: BlockType) -> bool {
-        self.is_block() && (self.0 & Self::TYPE_MASK) == id as u16
-    }
-
-    pub const fn is_terrain_id(self, id: TerrainType) -> bool {
-        self.is_terrain() && (self.0 & Self::TYPE_MASK) == id as u16
-    }
-
-    pub const fn block_id(self) -> Option<u16> {
-        if self.is_block() {
-            Some(self.0 & Self::TYPE_MASK)
-        } else {
-            None
+    fn save(&self) {
+        let result = wincode::serialize(self)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| write_atomic(&Self::path(), &bytes).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save world: {error}");
         }
     }
 
-    pub const fn terrain_id(self) -> Option<u16> {
-        if self.is_terrain() {
-            Some(self.0 & Self::TYPE_MASK)
-        } else {
-            None
-        }
-    }
-
-    pub fn unpack(self) -> Result<VoxelTypeItem, String> {
-        let discriminant = 0xE000 & self.0;
-        let payload = 0x1FFF & self.0;
-        Ok(match discriminant {
-            Self::DISCRIMINANT_AIR => VoxelTypeItem::Air,
-            Self::DISCRIMINANT_BLOCK => VoxelTypeItem::Block(BlockType::try_from(payload)?),
-            Self::DISCRIMINANT_TERRAIN => VoxelTypeItem::Terrain(TerrainType::try_from(payload)?),
-            _ => return Err(format!("Invalid voxel discriminant: {discriminant:#X}")),
-        })
+    fn load() -> Option<Self> {
+        let bytes = fs::read(Self::path()).ok()?;
+        wincode::deserialize(&bytes)
+            .inspect_err(|e| error!("Failed to decode world.bin: {e}"))
+            .ok()
     }
 }
 
-#[derive(Resource)]
-struct SharedVoxelAtlas(Arc<VoxelAtlas>);
-
-#[derive(Component)]
-struct PlayerCamera;
-
-#[derive(Component)]
-struct EditorCamera;
-
-fn game_view_captured(
-    inventory: Res<inventory::CreativeInventoryState>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
-) -> bool {
-    cursor.grab_mode == CursorGrabMode::Locked
-        && !inventory.open
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
-enum GameMode {
-    #[default]
-    Spectator,
-}
-
-#[derive(Default, Component)]
-struct Player;
-
-fn spawn_player(
-    mut commands: Commands,
-    editor_state: Res<EditorState>,
-) {
-    commands.spawn((
-            Name::new("Player"),
-            Player,
-            Projection::Perspective(PerspectiveProjection {
-                fov: 0.9,
-                ..default()
-            }),
-            Msaa::Off,
-            InheritedVisibility::default(),
-            Transform::from_xyz(1.5, 2.0, 4.0)
-                .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
-        ))
-        .with_children(|commands| {
-            commands.spawn((
-                PlayerCamera,
-                Camera3d::default(),
-                Projection::Perspective(PerspectiveProjection {
-                    fov: 0.9,
-                    ..default()
-                }),
-                Msaa::Off,
-                editor_state.game_camera_target(),
-                Transform {
-                    translation: Vec3::new(0.0, 1.6, 0.0),
-                    ..default()
-                },
-            ));
-        });
-}
-
-fn player_look(
-    mouse: Res<AccumulatedMouseMotion>,
-    mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
-    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
-) {
-    let delta = mouse.delta;
-
-    if delta != Vec2::ZERO {
-        // Horizontal movement rotates the entire player around the world Y axis
-        player.rotate_y(-delta.x * 0.0025);
-        // Vertical movement rotates only the camera around its local X axis
-        let (yaw, mut pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
-
-        pitch -= delta.y * 0.0025;
-        pitch = pitch.clamp(-1.4, 1.4);
-
-        camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+/// Writes to a temporary file first, so a crash cannot leave a half-written save.
+fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
     }
-}
-
-fn move_spectator(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    player: Single<(&mut Transform, &mut Player)>,
-) {
-    let (mut transform, _) = player.into_inner();
-
-    let delta = vec3(
-        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
-        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-    );
-
-    if delta != Vec3::ZERO {
-        let direction = delta.x * transform.right() + delta.y * Vec3::Y + delta.z * transform.forward();
-        transform.translation += 10.0 * time.delta_secs() * direction.normalize();
-    }
-}
-
-fn toggle_cursor(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    editor_state: Res<EditorState>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    inventory: Res<inventory::CreativeInventoryState>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-) {
-    // Release the cursor when escape is pressed, or when the game view is no longer the active tab
-    if keyboard.just_pressed(KeyCode::Escape)
-        || (
-            cursor.grab_mode != CursorGrabMode::None
-            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible())
-        )
-    {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
-    }
-
-    // Capture only when clicking inside the game view
-    if mouse.just_pressed(MouseButton::Left)
-        && editor_state.is_game_view_active()
-        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
-        && !inventory.open
-    {
-        cursor.grab_mode = CursorGrabMode::Locked;
-        cursor.visible = false;
-    }
-}
-
-#[derive(Resource)]
-struct ChunkMaterial(Handle<StandardMaterial>);
-
-fn setup_chunk_material(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-) {
-    let (atlas, image) = build_voxel_atlas(&mut images)
-        .unwrap_or_else(|e| panic!("Failed to build voxel atlas: {e}"));
-
-    let texture = images.add(image);
-    let layout = atlas_layouts.add(atlas.layout().clone());
-
-    commands.insert_resource(SharedVoxelAtlas(Arc::new(atlas)));
-    commands.insert_resource(VoxelAtlasAssets {
-        image: texture.clone(),
-        layout,
-    });
-
-    let material = materials.add(StandardMaterial {
-        base_color_texture: Some(texture),
-        perceptual_roughness: 0.9,
-        reflectance: 0.1,
-        ..default()
-    });
-
-    commands.insert_resource(ChunkMaterial(material));
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, bytes)?;
+    fs::rename(tmp, path)
 }
 
 fn main() -> AppExit {
@@ -395,40 +355,33 @@ fn main() -> AppExit {
                 .set(ImagePlugin::default_nearest()),
             EguiPlugin::default(),
             EditorPlugin,
+            ScreenshotPlugin::default(),
+            SettingsPlugin::default(),
+            GameModePlugin::default(),
+            PlayerPlugin::default(),
+            PhysicsPlugin::default(),
             CreativeInventoryPlugin,
+            HotbarPlugin,
         ))
-        .init_resource::<GameMode>()
-        .init_resource::<StructureWorld>()
-        .add_systems(PreStartup, setup_chunk_material)
+        .insert_resource(Structures::load().unwrap_or_else(|e| panic!("Failed to load structures: {e}")))
         .add_systems(Startup, (
-            setup_scene,
-            spawn_player,
+            global_illumination.spawn(),
         ))
         .add_systems(Update, (
-            toggle_cursor,
-            player_look,
-            move_spectator,
             draw_origin,
         ))
         .run()
 }
 
-fn setup_scene(mut commands: Commands) {
-    commands.spawn((
-        DirectionalLight {
-            shadow_maps_enabled: true,
-            illuminance: 10_000.0,
-            ..default()
-        },
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, -0.8, -0.8, 0.0),
-        ),
-    ));
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
 }
 
-#[derive(Resource, Default)]
-struct StructureWorld {
-    voxels: HashMap<WorldCoord, StructureVoxel>,
+fn game_view_captured(
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    inventory: Res<CreativeInventoryState>,
+) -> bool {
+    is_focused(cursor) && !inventory.open
 }
 
 fn draw_origin(mut gizmos: Gizmos) {

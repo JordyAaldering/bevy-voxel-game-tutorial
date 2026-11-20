@@ -1,5 +1,7 @@
 use crate::*;
 
+use std::{fs, path::Path};
+
 use bevy::prelude::*;
 
 /// Structures loaded from `assets/structures`.
