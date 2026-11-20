@@ -17,6 +17,9 @@ enum GameViewportMode {
     Embedded { active: bool, rect: Option<Rect> },
 }
 
+/// The `GameCursor` resource tracks the cursor position in the game view, which may
+/// be embedded in the editor or in a separate window. The position is updated at the
+/// start of each frame based on the current cursor position and the viewport mode.
 #[derive(Default, Resource)]
 pub struct GameCursor {
     pub position: Option<Vec2>,
