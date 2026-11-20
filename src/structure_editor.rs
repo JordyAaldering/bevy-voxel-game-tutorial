@@ -7,7 +7,6 @@ mod biome;
 mod chunk;
 mod chunk_neighbors;
 mod coords;
-mod editor;
 mod gamemode;
 mod game_view;
 mod inventory;
@@ -30,7 +29,6 @@ use crate::{
     chunk::*,
     chunk_neighbors::*,
     coords::*,
-    editor::*,
     gamemode::*,
     game_view::*,
     inventory::*,
@@ -354,7 +352,6 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest()),
-            EditorPlugin,
             ScreenshotPlugin::default(),
             SettingsPlugin::default(),
             GameModePlugin::default(),

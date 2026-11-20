@@ -5,6 +5,7 @@ use crate::{
     TerrainType,
     VoxelType,
     VoxelTypeItem,
+    GameCursor,
     GameViewport,
     game_view_captured,
     VoxelAtlasAssets,
@@ -274,10 +275,11 @@ fn cancel_inventory_pointer(commands: &mut Commands, location: Location) {
 fn forward_inventory_pointer(
     mut commands: Commands,
     mut inputs: MessageReader<PointerInput>,
+    game_cursor: Res<GameCursor>,
     game_viewport: Res<GameViewport>,
     inventory: Res<CreativeInventoryState>,
-    camera: Single<(&Camera, &RenderTarget), With<PlayerCamera>>,
-    window: Single<(Entity, &Window), With<PrimaryWindow>>,
+    render_target: Single<&RenderTarget, With<PlayerCamera>>,
+    window: Single<Entity, With<PrimaryWindow>>,
     mut pointers: Query<(&PointerId, &mut PointerLocation)>,
 ) {
     let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
@@ -292,20 +294,12 @@ fn forward_inventory_pointer(
         return;
     }
 
-    let (camera, render_target) = camera.into_inner();
-    let (window_entity, window) = window.into_inner();
-    let viewport_size = camera.logical_viewport_size();
-    let map_position = |position| {
-        inventory.open
-            .then(|| viewport_size.and_then(|size| game_viewport.map_position(position, size)))
-            .flatten()
-    };
-    let Some(target) = render_target.normalize(Some(window_entity)) else {
+    let Some(target) = render_target.normalize(Some(*window)) else {
         return;
     };
 
     for input in inputs.read().filter(|input| input.pointer_id == PointerId::Mouse) {
-        let Some(position) = map_position(input.location.position) else {
+        let Some(position) = inventory.open.then_some(game_cursor.position).flatten() else {
             if let Some(location) = pointer.location.take() {
                 cancel_inventory_pointer(&mut commands, location);
             }
@@ -324,7 +318,7 @@ fn forward_inventory_pointer(
         }
     }
 
-    let position = window.cursor_position().and_then(map_position);
+    let position = inventory.open.then_some(game_cursor.position).flatten();
     if let Some(position) = position {
         let location = Location { target, position };
         if pointer.location.as_ref() != Some(&location) {
@@ -340,22 +334,19 @@ fn forward_inventory_pointer(
 }
 
 fn sync_inventory_pointer(
+    game_cursor: Res<GameCursor>,
     game_viewport: Res<GameViewport>,
     inventory: Res<CreativeInventoryState>,
-    camera: Single<(&Camera, &RenderTarget), With<PlayerCamera>>,
-    window: Single<(Entity, &Window), With<PrimaryWindow>>,
+    render_target: Single<&RenderTarget, With<PlayerCamera>>,
+    window: Single<Entity, With<PrimaryWindow>>,
     mut pointers: Query<(&PointerId, &mut PointerLocation)>,
 ) {
     let Some((_, mut pointer)) = pointers.iter_mut().find(|(id, _)| **id == INVENTORY_POINTER) else {
         return;
     };
-    let (camera, render_target) = camera.into_inner();
-    let (window_entity, window) = window.into_inner();
     let location = if inventory.open && game_viewport.is_embedded() {
-        window.cursor_position()
-            .zip(camera.logical_viewport_size())
-            .and_then(|(position, size)| game_viewport.map_position(position, size))
-            .zip(render_target.normalize(Some(window_entity)))
+        game_cursor.position
+            .zip(render_target.normalize(Some(*window)))
             .map(|(position, target)| Location {
                 target,
                 position,
@@ -369,9 +360,7 @@ fn sync_inventory_pointer(
 fn update_cursor_preview(
     held: Res<HeldInventoryItem>,
     state: Res<CreativeInventoryState>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    game_viewport: Res<GameViewport>,
-    camera: Single<&Camera, With<PlayerCamera>>,
+    game_cursor: Res<GameCursor>,
     atlas: Res<VoxelAtlasAssets>,
     voxel_atlas: Res<SharedVoxelAtlas>,
     preview: Single<(&mut Node, &mut ImageNode), With<CursorItemPreview>>,
@@ -383,10 +372,7 @@ fn update_cursor_preview(
         return;
     };
 
-    let Some(position) = window.cursor_position()
-        .zip(camera.logical_viewport_size())
-        .and_then(|(position, size)| game_viewport.map_position(position, size))
-    else {
+    let Some(position) = game_cursor.position else {
         node.display = Display::None;
         return;
     };

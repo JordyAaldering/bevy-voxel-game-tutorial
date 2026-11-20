@@ -1,5 +1,10 @@
+use crate::PlayerCamera;
+
 use better_default::Default;
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    window::PrimaryWindow,
+};
 
 #[derive(Default, Resource)]
 pub struct GameViewport {
@@ -10,6 +15,11 @@ pub struct GameViewport {
 enum GameViewportMode {
     Window,
     Embedded { active: bool, rect: Option<Rect> },
+}
+
+#[derive(Default, Resource)]
+pub struct GameCursor {
+    pub position: Option<Vec2>,
 }
 
 impl GameViewport {
@@ -28,15 +38,6 @@ impl GameViewport {
         }
     }
 
-    pub fn contains(&self, position: Vec2) -> bool {
-        match self.mode {
-            GameViewportMode::Window => true,
-            GameViewportMode::Embedded { active, rect } => {
-                active && rect.is_some_and(|rect| rect.contains(position))
-            }
-        }
-    }
-
     pub fn map_position(&self, position: Vec2, viewport_size: Vec2) -> Option<Vec2> {
         match self.mode {
             GameViewportMode::Window => Some(position),
@@ -50,5 +51,23 @@ impl GameViewport {
             }
             GameViewportMode::Embedded { .. } => None,
         }
+    }
+}
+
+impl GameCursor {
+    pub fn update(
+        mut cursor: ResMut<Self>,
+        viewport: Res<GameViewport>,
+        window: Single<&Window, With<PrimaryWindow>>,
+        camera: Single<&Camera, With<PlayerCamera>>,
+    ) {
+        cursor.position = window.cursor_position().and_then(|position| {
+            if viewport.is_embedded() {
+                camera.logical_viewport_size()
+                    .and_then(|size| viewport.map_position(position, size))
+            } else {
+                viewport.map_position(position, Vec2::ZERO)
+            }
+        });
     }
 }

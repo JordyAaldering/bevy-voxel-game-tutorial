@@ -99,7 +99,7 @@ fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    game_cursor: Res<crate::GameCursor>,
     viewport: Res<crate::GameViewport>,
 ) {
     // Release the cursor when escape is pressed, or when the game view is no longer the active tab
@@ -114,9 +114,7 @@ fn toggle_cursor(
     }
 
     // Capture only when clicking inside the game view
-    if mouse.just_pressed(MouseButton::Left)
-        && window.cursor_position().is_some_and(|position| viewport.contains(position))
-    {
+    if mouse.just_pressed(MouseButton::Left) && game_cursor.position.is_some() {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }
@@ -127,7 +125,7 @@ fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     viewport: Res<crate::GameViewport>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    game_cursor: Res<crate::GameCursor>,
     inventory: Res<crate::CreativeInventoryState>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
@@ -144,7 +142,7 @@ fn toggle_cursor(
 
     // Capture only when clicking inside the game view
     if mouse.just_pressed(MouseButton::Left)
-        && window.cursor_position().is_some_and(|position| viewport.contains(position))
+        && game_cursor.position.is_some()
         && !inventory.open
     {
         cursor.grab_mode = CursorGrabMode::Locked;
@@ -274,7 +272,7 @@ fn break_place_block(
         look,
         INTERACTION_DISTANCE,
     ) {
-        info!("Hit {:?} at {:?}", coord, direction);
+        trace!("Hit {:?} at {:?}", coord, direction);
         if do_break {
             #[cfg(until18)]
             let voxel = crate::VoxelType::Air;
@@ -317,7 +315,7 @@ fn break_place_block(
         look,
         INTERACTION_DISTANCE,
     ) {
-        info!("Hit {:?} at {:?}", coord, direction);
+        trace!("Hit {:?} at {:?}", coord, direction);
         if do_break {
             world.set_voxel(&mut commands, coord, crate::VoxelType::AIR);
         } else /* if do_place */ {
