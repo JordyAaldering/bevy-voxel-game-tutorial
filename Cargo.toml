@@ -8,13 +8,13 @@ default-run = "main"
 name = "main"
 path = "src/chapter20.rs"
 
-[[bin]]
-name = "structure_editor"
-path = "src/structure_editor.rs"
+#[[bin]]
+#name = "structure_editor"
+#path = "src/structure_editor.rs"
 
-[[bin]]
-name = "noise_viewer"
-path = "src/noise_viewer.rs"
+#[[bin]]
+#name = "noise_viewer"
+#path = "src/noise_viewer.rs"
 
 [profile.dev]
 opt-level = 1
