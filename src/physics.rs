@@ -34,6 +34,9 @@ pub struct PhysicsInput {
     pub crouch: bool,
 }
 
+/// TODO: currently there is only one player, so this is a resource
+/// However, really physics state applies to any player or mob
+/// it should be a component instead.
 #[derive(Default, Resource)]
 struct PhysicsState {
     velocity: Vec3,
